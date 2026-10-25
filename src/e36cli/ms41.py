@@ -11,6 +11,7 @@ RAM multi-byte values are little-endian (telegram batch reads differ — big-end
 
 from __future__ import annotations
 
+import math
 import tomllib
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -32,6 +33,10 @@ CMD_DTC_CLEAR = bytes([0x05])           # WRITE operation
 
 class ProfileError(ValueError):
     """Profile data failed to load or validate."""
+
+
+class DecodeError(ValueError):
+    """A response payload didn't match the expected shape (short/long read)."""
 
 
 @dataclass(frozen=True)
@@ -96,6 +101,7 @@ class ParamSpec:
     signed: bool = False
     endian: str = "little"  # raw 0x06 RAM reads are little-endian
     mask: int | None = None
+    core: bool = False  # dashboard-core subset (default for live/log)
     _fn: Callable[[float], float] = field(repr=False, compare=False, default=None)  # type: ignore[assignment]
 
     def decode(self, data: bytes) -> "Value":
@@ -126,8 +132,6 @@ class Profile:
     id: str
     description: str
     match_hw: tuple[str, ...]
-    match_zb: tuple[str, ...]
-    match_sw: tuple[str, ...]
     params: tuple[ParamSpec, ...]
     source_file: str = ""
 
@@ -136,6 +140,10 @@ class Profile:
             if p.name == name:
                 return p
         raise KeyError(name)
+
+    @property
+    def core_params(self) -> tuple[ParamSpec, ...]:
+        return tuple(p for p in self.params if p.core)
 
 
 @dataclass(frozen=True)
@@ -178,28 +186,11 @@ def _load_profile_file(path: Path) -> Profile:
     seen: set[str] = set()
     for entry in doc.get("param", []):
         try:
-            spec = ParamSpec(
-                name=entry["name"],
-                label=entry.get("label", entry["name"]),
-                unit=entry.get("unit", ""),
-                addr=entry["addr"],
-                size=entry["size"],
-                formula=entry.get("formula", "x"),
-                source=entry.get("source", ""),
-                verified=entry.get("verified", False),
-                signed=entry.get("signed", False),
-                endian=entry.get("endian", "little"),
-                mask=entry.get("mask"),
-            )
-            object.__setattr__(spec, "_fn", compile_formula(spec.formula))
-        except (KeyError, ValueError) as exc:
+            spec = _validate_param(entry)
+        except (KeyError, ValueError, TypeError) as exc:
             raise ProfileError(f"{path.name}: bad param {entry.get('name', '?')!r}: {exc}") from exc
         if spec.name in seen:
             raise ProfileError(f"{path.name}: duplicate param {spec.name!r}")
-        if spec.size not in (1, 2, 4):
-            raise ProfileError(f"{path.name}: param {spec.name!r} has unsupported size {spec.size}")
-        if not 0 <= spec.addr <= 0xFFFFFF:
-            raise ProfileError(f"{path.name}: param {spec.name!r} address out of 24-bit range")
         seen.add(spec.name)
         params.append(spec)
 
@@ -207,11 +198,58 @@ def _load_profile_file(path: Path) -> Profile:
         id=pid,
         description=desc,
         match_hw=tuple(head.get("match_hw", [])),
-        match_zb=tuple(head.get("match_zb", [])),
-        match_sw=tuple(head.get("match_sw", [])),
         params=tuple(params),
         source_file=str(path),
     )
+
+
+def _is_int(v: object) -> bool:
+    return isinstance(v, int) and not isinstance(v, bool)
+
+
+def _validate_param(entry: dict) -> ParamSpec:
+    """Build + fully validate one ParamSpec; every defect raises at load time."""
+    spec = ParamSpec(
+        name=entry["name"],
+        label=entry.get("label", entry["name"]),
+        unit=entry.get("unit", ""),
+        addr=entry["addr"],
+        size=entry["size"],
+        formula=entry.get("formula", "x"),
+        source=entry.get("source", ""),
+        verified=entry.get("verified", False),
+        signed=entry.get("signed", False),
+        endian=entry.get("endian", "little"),
+        mask=entry.get("mask"),
+        core=entry.get("core", False),
+    )
+    if not isinstance(spec.name, str) or not spec.name:
+        raise ValueError("name must be a non-empty string")
+    if not _is_int(spec.addr) or not 0 <= spec.addr <= 0xFFFFFF:
+        raise ValueError(f"addr must be a 24-bit integer, got {spec.addr!r}")
+    if not _is_int(spec.size) or spec.size not in (1, 2, 4):
+        raise ValueError(f"size must be 1, 2, or 4, got {spec.size!r}")
+    if spec.endian not in ("big", "little"):
+        raise ValueError(f"endian must be 'big' or 'little', got {spec.endian!r}")
+    if spec.mask is not None and (not _is_int(spec.mask) or spec.mask < 0):
+        raise ValueError(f"mask must be a non-negative integer, got {spec.mask!r}")
+    if spec.mask is not None and spec.signed:
+        raise ValueError("signed + mask is ambiguous (mask a sign-extended value?); pick one")
+    if not isinstance(spec.signed, bool) or not isinstance(spec.verified, bool) or not isinstance(spec.core, bool):
+        raise ValueError("signed/verified/core must be booleans")
+    fn = compile_formula(spec.formula)  # FormulaError is a ValueError
+    # Probe the compiled formula over the raw range so bad arithmetic
+    # (x / 0, overflow to inf) fails at load, not mid-poll.
+    hi = float((1 << (spec.size * 8)) - 1)
+    for xv in (0.0, 1.0, hi):
+        try:
+            y = fn(xv)
+        except ArithmeticError as exc:
+            raise ValueError(f"formula {spec.formula!r} fails at x={xv}: {exc}") from exc
+        if not math.isfinite(y):
+            raise ValueError(f"formula {spec.formula!r} is non-finite at x={xv}")
+    object.__setattr__(spec, "_fn", fn)
+    return spec
 
 
 def load_profiles(directory: Path | None = None) -> dict[str, Profile]:
@@ -228,15 +266,11 @@ def load_profiles(directory: Path | None = None) -> dict[str, Profile]:
 
 
 def match_profile(ident: Ident | str, profiles: dict[str, Profile] | None = None) -> Profile:
-    """Select a profile by ident ECU-ID (exact), then match_sw substring, else generic."""
+    """Select a profile by ident ECU-ID (exact match_hw entry), else generic."""
     profiles = profiles or load_profiles()
     ecu_id = ident if isinstance(ident, str) else ident.ecu_id
     for profile in profiles.values():
         if ecu_id in profile.match_hw:
-            return profile
-    full = "" if isinstance(ident, str) else ident.raw.decode("ascii", errors="replace")
-    for profile in profiles.values():
-        if any(sub and sub in full for sub in profile.match_sw):
             return profile
     try:
         return profiles[GENERIC_PROFILE_ID]
@@ -308,7 +342,7 @@ def build_read_payload(req: ReadRequest) -> bytes:
 def decode_reads(profile: Profile, req: ReadRequest, data: bytes) -> dict[str, Value]:
     """Decode a 0x06 response payload (the CNT data bytes) back into param values."""
     if len(data) != req.count:
-        raise ValueError(f"expected {req.count} bytes for read @{req.addr:#x}, got {len(data)}")
+        raise DecodeError(f"expected {req.count} bytes for read @{req.addr:#x}, got {len(data)}")
     out: dict[str, Value] = {}
     for param, offset in req.params:
         out[param.name] = param.decode(data[offset : offset + param.size])

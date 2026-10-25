@@ -113,10 +113,11 @@ def test_match_falls_back_to_generic(profiles):
     assert match_profile("9999999", profiles).id == "ms41-generic"
 
 
-def test_match_by_sw_substring(profiles):
-    # unknown ECU id but a known SW number elsewhere in the ident payload
+def test_unknown_ecu_id_falls_back_to_generic(profiles):
+    # match_sw substring matching was removed (review #12: the SW part numbers
+    # never occur in the ident payload) — unknown ECU IDs go generic.
     ident = Ident(raw=b"XXXXXXX...1438068DA...", ecu_id="XXXXXXX")
-    assert match_profile(ident, profiles).id == "ms41.1"
+    assert match_profile(ident, profiles).id == "ms41-generic"
 
 
 # --- read planning ----------------------------------------------------------
@@ -167,9 +168,7 @@ def test_plan_reads_property(addrs, gap):
     )
     for p in params:
         object.__setattr__(p, "_fn", lambda x: x)
-    profile = ms41.Profile(
-        id="t", description="t", match_hw=(), match_zb=(), match_sw=(), params=params
-    )
+    profile = ms41.Profile(id="t", description="t", match_hw=(), params=params)
     reqs = plan_reads(profile, gap_tolerance=gap)
     seen: list[str] = []
     for req in reqs:
@@ -233,3 +232,55 @@ def test_trim_formula_midpoint(profiles):
     p = profiles["ms41.1"].param("stft_b1")
     assert p.decode((32768).to_bytes(2, "little")).value == pytest.approx(0.0)
     assert p.decode((65535).to_bytes(2, "little")).value == pytest.approx(50.0, abs=0.01)
+
+
+# --- load-time profile validation (review finding #4) -------------------------
+
+
+def _profile_toml(tmp_path, param_lines: str):
+    text = (
+        '[profile]\nid = "t"\ndescription = "t"\nmatch_hw = ["0000000"]\n\n'
+        '[[param]]\nname = "p"\naddr = 0xDA2A\nsize = 1\n' + param_lines
+    )
+    (tmp_path / "t.toml").write_text(text)
+    return tmp_path
+
+
+@pytest.mark.parametrize(
+    "lines",
+    [
+        'formula = "x / 0"\n',                      # ZeroDivisionError at poll time
+        'endian = "middle"\n',                      # bad endian
+        'mask = "0x3FF"\n',                         # mask as string
+        'formula = "x * 10e400"\n',                 # inf literal
+        'formula = "x * 1' + "0" * 400 + '"\n',     # OverflowError literal
+        'signed = true\nmask = 0x3FF\n',            # ambiguous combination
+    ],
+)
+def test_bad_param_fields_raise_profile_error_at_load(tmp_path, lines):
+    with pytest.raises(ms41.ProfileError):
+        ms41.load_profiles(_profile_toml(tmp_path, lines))
+
+
+def test_bad_addr_type_raises_profile_error(tmp_path):
+    text = (
+        '[profile]\nid = "t"\ndescription = "t"\n\n'
+        '[[param]]\nname = "p"\naddr = "0xDA2A"\nsize = 1\n'
+    )
+    (tmp_path / "t.toml").write_text(text)
+    with pytest.raises(ms41.ProfileError):
+        ms41.load_profiles(tmp_path)
+
+
+def test_decode_length_mismatch_is_typed(profiles):
+    profile = profiles["ms41.1"]
+    (req,) = plan_reads(profile, names=["rpm"])
+    with pytest.raises(ms41.DecodeError):
+        decode_reads(profile, req, b"\x00")
+
+
+def test_shipped_profiles_have_core_subsets(profiles):
+    for pid in ("ms41.0", "ms41.1", "ms41.2"):
+        core = profiles[pid].core_params
+        assert 8 <= len(core) <= 14, f"{pid} core set looks wrong: {len(core)}"
+        assert {"rpm", "coolant_temp"} <= {p.name for p in core}

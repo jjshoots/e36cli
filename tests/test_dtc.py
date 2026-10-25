@@ -85,3 +85,16 @@ def test_hours_counter():
 def test_flags_enumeration():
     d = Dtc(code=1, description="x", system="y", status=0x47)
     assert set(d.flags) == {"short to B+", "short to ground", "open circuit", "currently present"}
+
+
+def test_trailing_pad_bytes_tolerated():
+    # count=2 with 23 record bytes: 2x10-byte records + 3 pad bytes must decode
+    # as stored records, not error (review: ECUs pad; sizes vary per module).
+    payload = bytes([2]) + record(100) + record(214) + b"\x00\x00\x00"
+    faults = decode_dtc_response(payload)
+    assert [f.code for f in faults] == [100, 214]
+
+
+def test_dtc_carries_db_verified_flag():
+    (fault,) = decode_dtc_response(bytes([1]) + record(100))
+    assert fault.verified is False  # db is file-level verified=false pre-garage

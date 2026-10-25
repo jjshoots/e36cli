@@ -65,13 +65,36 @@ def test_live_once_renders_params_with_unverified_marker():
 
 
 def test_live_json_snapshot_parses():
-    result = invoke("--sim", "live", "--json")
+    result = invoke("--sim", "live", "--json", "--all")
     assert result.exit_code == 0, result.output
     doc = json.loads(result.stdout)
     assert doc["profile"] == "ms41.1"
     assert doc["params"]["rpm"]["value"] == pytest.approx(800, abs=30)
     assert doc["params"]["rpm"]["verified"] is False
     assert set(doc["params"]) == {p.name for p in ms41.load_profiles()["ms41.1"].params}
+
+
+def test_live_defaults_to_core_subset():
+    result = invoke("--sim", "live", "--json")
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.stdout)
+    core = {p.name for p in ms41.load_profiles()["ms41.1"].core_params}
+    assert core  # the shipped profile marks a dashboard core
+    assert set(doc["params"]) == core
+
+
+def test_live_explicit_params_selection():
+    result = invoke("--sim", "live", "--json", "--params", "rpm,coolant_temp")
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.stdout)
+    assert set(doc["params"]) == {"rpm", "coolant_temp"}
+
+
+def test_live_unknown_param_errors_cleanly():
+    result = invoke("--sim", "live", "--json", "--params", "warp_core")
+    assert result.exit_code == 1
+    assert "unknown param" in result.output
+    assert "Traceback" not in result.output
 
 
 def test_timing_debug_reports_rate_to_stderr():
@@ -112,7 +135,7 @@ def test_log_csv(tmp_path):
     lines = out.read_text().strip().splitlines()
     assert len(lines) == 4  # header + 3 samples
     assert lines[0].startswith("t,")
-    assert "rpm" in lines[0]
+    assert "rpm?" in lines[0]  # unverified params are marked in the header
     assert "Wrote 3 sample(s)" in result.output
 
 
@@ -122,7 +145,8 @@ def test_log_jsonl(tmp_path):
     assert result.exit_code == 0, result.output
     rows = [json.loads(line) for line in out.read_text().strip().splitlines()]
     assert len(rows) == 2
-    assert rows[0]["rpm"] == pytest.approx(800, abs=30)
+    assert rows[0]["params"]["rpm"]["value"] == pytest.approx(800, abs=30)
+    assert rows[0]["params"]["rpm"]["verified"] is False
 
 
 # --- raw + captures ----------------------------------------------------------
@@ -197,30 +221,66 @@ def test_missing_port_is_one_line_error_not_traceback():
 
 
 def wire_budget(reads) -> float:
-    """Implied poll rate from pure byte math at 9600 baud (~960 B/s)."""
+    """Implied poll rate from byte math at 9600 baud, 8E1 (11 bits/byte ≈
+    872 B/s). Counts BOTH directions the request occupies the single-wire
+    K-line (TX + its echo), the response frame, and the inter-frame gap —
+    review finding #2: omitting the echo and gap overstated the rate ~2x."""
+    gap = ds2.Timing().inter_frame_gap
     wire_bytes = 0
     for req in reads:
         request = ds2.build_frame(ds2.ADDR["DME"], ms41.build_read_payload(req))
-        wire_bytes += len(request) + (req.count + 4)  # TX once + response frame
-    return 960 / wire_bytes
+        wire_bytes += 2 * len(request) + (req.count + 4)
+    seconds = wire_bytes / (9600 / 11) + len(reads) * gap
+    return 1.0 / seconds
 
 
 def test_poll_wire_budget_full_set():
-    """The 29 params span ~9 KB of RAM, so the full set over 0x06 reads is
-    ~3.3 Hz at the physical limit; the SPEC 10 Hz target needs the 0x0B batch
-    telegram (research/ms41-data.md §3.7) — not yet implemented. This test
-    pins the floor so plan regressions are caught."""
+    """The 29 params span ~9 KB of RAM: 12 batched 0x06 reads ≈ 1.3 Hz at the
+    physical limit (echo + gaps included). 10+ Hz needs the 0x0B batch
+    telegram (research/ms41-data.md §3.7) — not yet implemented. This pins
+    the floor so plan regressions are caught."""
     profile = ms41.load_profiles()["ms41.1"]
     reads = live.plan(profile)
     assert len(reads) <= 12  # 29 params must not mean 29 round trips
-    assert wire_budget(reads) >= 3.0
+    assert wire_budget(reads) >= 1.0
 
 
-def test_poll_wire_budget_priority_subset():
-    """A dashboard-core subset must sustain a usable refresh rate."""
+def test_poll_wire_budget_core_subset():
+    """The shipped dashboard-core subset (live/log default) must sustain a
+    usable refresh rate."""
     profile = ms41.load_profiles()["ms41.1"]
-    key = [
-        "rpm", "maf", "iat", "coolant_temp", "tps", "battery",
-        "ignition_advance", "injector_pw", "stft_b1", "stft_b2", "load",
-    ]
-    assert wire_budget(live.plan(profile, names=key)) >= 6.0
+    core = [p.name for p in profile.core_params]
+    assert core
+    assert wire_budget(live.plan(profile, names=core)) >= 2.5
+
+
+def test_doctor_sim_skips_hardware_and_passes():
+    result = invoke("--sim", "doctor")
+    assert result.exit_code == 0, result.output
+    assert "simulated" in result.output
+    assert "not found" not in result.output
+
+
+def test_sim_dtcs_env_invalid_is_one_line_error(monkeypatch):
+    monkeypatch.setenv("E36CLI_SIM_DTCS", "100,banana")
+    result = invoke("--sim", "dtc", "read")
+    assert result.exit_code == 1
+    assert "E36CLI_SIM_DTCS" in result.output
+    assert "Traceback" not in result.output
+
+
+def test_dtc_read_marks_unverified_descriptions(monkeypatch):
+    monkeypatch.setenv("E36CLI_SIM_DTCS", "100")
+    result = invoke("--sim", "dtc", "read")
+    assert result.exit_code == 0, result.output
+    assert "?" in result.output  # db is file-level verified = false pre-garage
+    assert "not verified" in result.output
+
+
+def test_dtc_read_shows_fault_age(monkeypatch):
+    # Sim hours counter is 1500 (150.0 h), fault stamp 1200 -> 30.0 h ago.
+    monkeypatch.setenv("E36CLI_SIM_DTCS", "214")
+    result = invoke("--sim", "dtc", "read")
+    assert result.exit_code == 0, result.output
+    assert "Age (h)" in result.output
+    assert "30.0" in result.output

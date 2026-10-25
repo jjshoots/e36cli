@@ -15,13 +15,14 @@ id = "ms41.0"
 description = "MS41.0 (Euro M52) — ECU ID 1429861/1427703/1440176"
 match_hw = ["1427703", "1429861", "1440176", "7505858"]
 # ZB numbers from SP-Daten MDS411 (R3VLimited archive, research §1.2)
-match_zb = ["1429954", "1429955", "1438745", "1438790"]
-match_sw = []
+# ZB numbers (unused by matching; SP-Daten reference): ["1429954", "1429955", "1438745", "1438790"]
+# SW numbers (unused by matching): []
 
 # --- common across all MS41 ECU IDs (research §3.6.1) ---
 
 [[param]]
 name = "rpm"
+core = true
 label = "Engine RPM"
 unit = "rpm"
 addr = 0xDA2A
@@ -32,6 +33,7 @@ verified = false
 
 [[param]]
 name = "maf"
+core = true
 label = "Mass air flow"
 unit = "kg/h"
 addr = 0xDA34
@@ -53,6 +55,7 @@ verified = false
 
 [[param]]
 name = "iat"
+core = true
 label = "Intake air temp"
 unit = "°C"
 addr = 0xDA50
@@ -73,6 +76,7 @@ verified = false
 
 [[param]]
 name = "coolant_temp"
+core = true
 label = "Coolant temp"
 unit = "°C"
 addr = 0xDA5A
@@ -83,6 +87,7 @@ verified = false
 
 [[param]]
 name = "vss"
+core = true
 label = "Vehicle speed"
 unit = "km/h"
 addr = 0xDA63
@@ -93,6 +98,7 @@ verified = false
 
 [[param]]
 name = "ignition_advance"
+core = true
 label = "Ignition advance"
 unit = "°"
 addr = 0xE989
@@ -123,6 +129,7 @@ verified = false
 
 [[param]]
 name = "vanos_angle"
+core = true
 label = "VANOS angle"
 unit = "°"
 addr = 0xE9E6
@@ -133,6 +140,7 @@ verified = false
 
 [[param]]
 name = "tps"
+core = true
 label = "Throttle position"
 unit = "%"
 addr = 0xE8D0
@@ -241,6 +249,7 @@ verified = false
 
 [[param]]
 name = "stft_b1"
+core = true
 label = "Short trim B1"
 unit = "%"
 addr = 0xED5C
@@ -251,6 +260,7 @@ verified = false
 
 [[param]]
 name = "stft_b2"
+core = true
 label = "Short trim B2"
 unit = "%"
 addr = 0xED96
@@ -311,6 +321,7 @@ verified = false
 
 [[param]]
 name = "battery"
+core = true
 label = "Battery voltage"
 unit = "V"
 addr = 0xFB47

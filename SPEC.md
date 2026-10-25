@@ -47,19 +47,21 @@ spec in the same change.
 
 ```toml
 [profile]
-id = "ms41.1-stock"
-description = "MS41.1 stock (M52B28)"
-match_sw = ["..."]        # ident substrings that select this profile
+id = "ms41.1"
+description = "MS41.1 (US OBD-II M52)"
+match_hw = ["1437806"]    # ident ECU-ID exact match selects this profile
 
 [[param]]
 name = "coolant_temp"
 label = "Coolant"
 unit = "°C"
-addr = 0x0000             # or group/offset per the actual read mechanism
+addr = 0xDA5A             # 24-bit RAM address, read via cmd 0x06
 size = 1
 formula = "x * 0.75 - 48"  # safe arithmetic on raw value x (no eval of arbitrary code)
 source = "https://..."
 verified = false
+core = true               # optional: dashboard-core subset (live/log default)
+# optional: signed, endian ("little" default), mask (signed+mask is rejected)
 ```
 
 - Formula strings support only: `x`, numeric literals, `+ - * /`, parentheses,
@@ -78,9 +80,9 @@ verified = false
 | `e36 scan` | Probe known E36 module addresses, list responders | no |
 | `e36 dtc read` | Read + decode fault codes | no |
 | `e36 dtc clear` | Clear fault codes | **yes** |
-| `e36 live` | Rich live dashboard of profile params (default ~10 Hz) | no |
+| `e36 live` | Rich live dashboard (core param set by default; `--all`, `--params a,b`, `--rate`) | no |
 | `e36 live --once` / `--json` | Single snapshot, human or JSON | no |
-| `e36 log OUT.csv` | Stream samples to CSV/JSONL until Ctrl-C | no |
+| `e36 log OUT.csv` | Stream samples to CSV/JSONL until Ctrl-C (same selection flags; unverified params marked in headers/fields) | no |
 | `e36 raw HEX...` | Send arbitrary frame, print hex response (the probe tool) | caution |
 | `e36 captures` | List/show capture sessions | no |
 
@@ -90,12 +92,19 @@ transport) / `--sim-fixture PATH` (capture replay, implies `--sim`),
 stats to stderr). `e36 log` also takes `--samples N` for bounded runs.
 Env hooks: `E36CLI_CAPTURE_DIR`, `E36CLI_SIM_DTCS` (seed sim fault codes).
 
+Failure policy: the live poller treats wire errors as transient (keeps polling,
+gives up after 10 consecutive failed polls) and any other exception as fatal
+immediately; either way the dashboard exits non-zero with a one-line message.
+Transports are closed on every CLI exit path (capture files flush per event).
+
 ## Performance targets
 
-- Wire-limit honesty (byte math at 9600 baud ≈ 960 B/s): the full 29-param
-  ms41.1 set spans ~9 KB of RAM → 12 batched 0x06 reads → **~3.3 Hz ceiling**;
-  the ~11-param dashboard core sustains **~6.4 Hz**. Targets: ≥ 3 Hz full set,
-  ≥ 6 Hz dashboard subset, pinned by perf tests against the sim.
+- Wire-limit honesty (9600 baud 8E1 = 11 bits/byte ≈ 872 B/s, and every TX
+  byte occupies the wire twice — the K-line echoes it): the full 29-param
+  ms41.1 set is 12 batched 0x06 reads → **~1.9 Hz ceiling**; the 11-param
+  dashboard core (profile `core = true` flags, the live/log default) is
+  8 reads → **~3.5 Hz**. Targets pinned by perf tests: ≥ 1 Hz full set,
+  ≥ 2.5 Hz core.
 - Path to 10–19 Hz (future, needs on-car validation): the MS41 batch telegram
   (`0B 01` arm address list → `0B 00` poll, 38-byte response) per
   research/ms41-data.md §3.7 — medium confidence, not implemented in v1.

@@ -100,7 +100,7 @@ class SimulatedDME:
         if name == "ignition_advance":
             return 12 + r.uniform(-1, 1)
         if name == "vanos_angle":
-            return 110.0
+            return 60.0  # must stay invertible within the 1-byte field (max ~95.5)
         if name == "injector_pw":
             return 3.5
         if name == "idle_valve":
@@ -156,7 +156,7 @@ class SimulatedDME:
 
     def _read_memory(self, payload: bytes) -> bytes:
         if len(payload) != 6 or payload[1] != 0x00:
-            return bytes([0xA2])
+            return bytes([0xB0])  # bad mode/shape: command rejected (research §2)
         address = int.from_bytes(payload[2:5], "big")
         count = payload[5]
         if count == 0 or not (RAM_LO <= address and address + count <= RAM_HI):

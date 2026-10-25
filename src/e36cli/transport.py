@@ -101,6 +101,8 @@ class SerialTransport:
 
     def close(self) -> None:
         self._ser.close()
+        if self._capture is not None:
+            self._capture.close()
 
 
 @dataclass

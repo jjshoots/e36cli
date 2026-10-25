@@ -4,10 +4,12 @@ Byte-level facts sourced in research/ds2-protocol.md:
 - frame = [addr][len][payload...][xor]; len counts the WHOLE frame
 - checksum = XOR of all preceding bytes, initial 0
 - response payload byte 0 is the status byte (0xA0 = OK)
-- the K-line echoes every transmitted byte; echo is read back and must match
-Garbage/resync: some modules emit noise or unsolicited frames, so response
-reads scan for the expected address with a plausible length byte, dropping
-leading bytes one at a time (garagediag-style resync).
+- the K-line echoes every transmitted byte; the echo is read back and matched
+Garbage/resync: the K-line carries noise (stray 0x00s, unsolicited frames), so
+both the echo read and the response read scan-and-strip leading bytes until a
+match / plausible header appears (garagediag-style resync), bounded by
+Timing.resync_budget. A header whose frame fails its checksum re-enters the
+hunt one byte later rather than discarding the buffer.
 """
 
 from __future__ import annotations
@@ -149,7 +151,7 @@ class Timing:
 
     deadline: float = 0.3  # per-attempt response deadline
     retries: int = 2  # extra attempts after the first
-    inter_frame_gap: float = 0.02  # min quiet time between requests
+    inter_frame_gap: float = 0.005  # min quiet time between requests (research: ~0 observed)
     busy_delay: float = 0.05  # wait before retrying after 0xA1 busy
     resync_budget: int = 64  # max bytes discarded while hunting a frame start
 
@@ -169,18 +171,23 @@ class DS2Client:
         self._last_io = 0.0
 
     def query(
-        self, addr: int, payload: bytes, timing: Timing | None = None
+        self,
+        addr: int,
+        payload: bytes,
+        timing: Timing | None = None,
+        max_response: int | None = None,
     ) -> Response:
         t = timing or self.timing
         request = build_frame(addr, payload)
+        max_len = min(max_response, 0xFF) if max_response else 0xFF
         attempts = t.retries + 1
         last_err: DS2Error | None = None
         while attempts > 0:
             attempts -= 1
             self._respect_gap(t)
             try:
-                resp = self._attempt(addr, request, t)
-            except (Timeout, ChecksumError) as exc:
+                resp = self._attempt(addr, request, t, max_len)
+            except (Timeout, ChecksumError, EchoMismatch) as exc:
                 last_err = exc
                 continue
             if resp.status == 0xA1 and attempts > 0:  # busy: wait and retry
@@ -198,43 +205,81 @@ class DS2Client:
         if wait > 0:
             time.sleep(wait)
 
-    def _attempt(self, addr: int, request: bytes, t: Timing) -> Response:
+    def _attempt(self, addr: int, request: bytes, t: Timing, max_len: int) -> Response:
         end = time.monotonic() + t.deadline
         self.transport.flush_input()
         self.transport.send(request)
         self._last_io = time.monotonic()
         try:
-            echo = self.transport.recv(len(request), self._left(end))
-            if echo != request:
-                raise EchoMismatch(request, echo)
-            raw = self._read_frame(addr, end, t)
+            self._consume_echo(request, end, t)
+            frame = self._read_frame(addr, end, t, max_len)
         except TransportTimeout as exc:
             raise Timeout(str(exc), partial=exc.partial) from exc
         finally:
             self._last_io = time.monotonic()
-        frame = parse_frame(raw)  # raises ChecksumError on corruption
         if not frame.payload:
-            raise DS2Error(f"response has no status byte: {hexstr(raw)}")
+            raise DS2Error(f"response has no status byte: {hexstr(frame.raw)}")
         return Response(frame)
 
-    def _read_frame(self, addr: int, end: float, t: Timing) -> bytes:
-        """Read one frame from `addr`, resyncing past noise bytes."""
-        buf = bytearray(self.transport.recv(2, self._left(end)))
+    def _consume_echo(self, request: bytes, end: float, t: Timing) -> None:
+        """Match-and-strip the K-line echo, tolerating leading noise bytes."""
+        echo = bytearray(self.transport.recv(len(request), self._left(end)))
         dropped = 0
-        # Hunt for a plausible header: expected address + sane length byte.
-        while buf[0] != addr or buf[1] < _MIN_RESPONSE_LEN:
+        while bytes(echo) != request:
             dropped += 1
             if dropped > t.resync_budget:
+                raise EchoMismatch(request, bytes(echo))
+            del echo[0]
+            echo.extend(self.transport.recv(1, self._left(end)))
+
+    def _read_frame(self, addr: int, end: float, t: Timing, max_len: int = 0xFF) -> Frame:
+        """Read one valid frame from `addr`, resyncing past noise bytes.
+
+        A plausible header is expected-address + length in [4, max_len]. If the
+        framed bytes fail their checksum, the hunt re-enters one byte later
+        (the header match may have been data coincidence); the budget caps
+        total discarded bytes either way.
+        """
+        buf = bytearray()
+        dropped = 0
+        last_cks: ChecksumError | None = None
+
+        def refill(n: int) -> None:
+            # Once a checksum failure is on record, a dry wire means the
+            # garbled frame was the response — surface the ChecksumError
+            # (retryable) rather than a less informative Timeout.
+            try:
+                while len(buf) < n:
+                    buf.extend(self.transport.recv(n - len(buf), self._left(end)))
+            except TransportTimeout:
+                if last_cks is not None:
+                    raise last_cks from None
+                raise
+
+        def drop_one() -> None:
+            nonlocal dropped
+            dropped += 1
+            if dropped > t.resync_budget:
+                if last_cks is not None:
+                    raise last_cks
                 raise Timeout(
-                    f"no frame header from 0x{addr:02X} within resync budget",
+                    f"no frame from 0x{addr:02X} within resync budget",
                     partial=bytes(buf),
                 )
             del buf[0]
-            buf.extend(self.transport.recv(1, self._left(end)))
-        total = buf[1]
-        if len(buf) < total:
-            buf.extend(self.transport.recv(total - len(buf), self._left(end)))
-        return bytes(buf)
+
+        refill(2)
+        while True:
+            while buf[0] != addr or not _MIN_RESPONSE_LEN <= buf[1] <= max_len:
+                drop_one()
+                refill(2)
+            refill(buf[1])
+            try:
+                return parse_frame(bytes(buf[: buf[1]]))
+            except ChecksumError as exc:
+                last_cks = exc
+                drop_one()
+                refill(2)
 
     @staticmethod
     def _left(end: float) -> float:

@@ -53,6 +53,7 @@ class Dtc:
     description: str
     system: str
     status: int
+    verified: bool = False  # description text verified against this car/DIS
     frequency: int | None = None
     logistics: int | None = None
     freeze_raw: bytes = b""
@@ -92,6 +93,19 @@ def describe(code: int) -> tuple[str, str]:
     return (entry["text"], entry.get("system", ""))
 
 
+def db_verified(code: int | None = None) -> bool:
+    """Provenance of a DTC description: per-entry `verified`, else the file-level
+    [meta] flag (SPEC invariant 3 — unverified text renders with a ? marker)."""
+    db = _db()
+    file_level = bool(db.get("meta", {}).get("verified", False))
+    if code is None:
+        return file_level
+    entry = db.get("codes", {}).get(str(code))
+    if entry is None:
+        return False
+    return bool(entry.get("verified", file_level))
+
+
 def freeze_frame_scales() -> dict[int, FreezeFrameScale]:
     return {
         row["id"]: FreezeFrameScale(
@@ -122,11 +136,13 @@ def decode_dtc_response(data: bytes) -> list[Dtc]:
     rest = data[1:]
     if count == 0:
         return []
-    if rest and len(rest) % count == 0:
+    if rest and len(rest) % count == 0 and 2 <= len(rest) // count <= 16:
         size = len(rest) // count
     else:
+        # Uneven payload: assume the known 10-byte stored-record size and
+        # tolerate trailing pad bytes (garagediag observes per-ECU variance).
         size = STORED_RECORD_SIZE
-    if size < 2 or len(rest) < count * size:
+    if len(rest) < count * size:
         raise DtcError(f"malformed DTC payload: count={count}, {len(rest)} record bytes")
 
     out: list[Dtc] = []
@@ -138,6 +154,7 @@ def decode_dtc_response(data: bytes) -> list[Dtc]:
                 code=e[0],
                 description=description,
                 system=system,
+                verified=db_verified(e[0]),
                 status=e[1],
                 frequency=e[2] if size > 2 else None,
                 logistics=e[3] if size > 3 else None,

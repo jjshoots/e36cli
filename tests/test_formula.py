@@ -71,3 +71,13 @@ def test_decode_raw_errors():
         decode_raw(b"\x01", 2)
     with pytest.raises(ValueError):
         decode_raw(b"\x01", 1, endian="middle")
+
+
+def test_huge_literal_rejected():
+    with pytest.raises(FormulaError):
+        compile_formula("x * 1" + "0" * 400)
+
+
+def test_inf_literal_rejected():
+    with pytest.raises(FormulaError):
+        compile_formula("x + 10e400")

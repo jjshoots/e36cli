@@ -81,10 +81,13 @@ def _check_captures(directory: Path) -> Check:
         return Check("captures dir", False, f"{directory}: {exc}")
 
 
-def run_checks(port: str, capture_dir: Path | None = None) -> list[Check]:
-    checks = _check_port(port)
-    if checks[0].ok:
-        checks.append(_check_latency(port))
+def run_checks(port: str, capture_dir: Path | None = None, sim: bool = False) -> list[Check]:
+    if sim:
+        checks = [Check("transport", True, "simulated DME (hardware checks skipped)")]
+    else:
+        checks = _check_port(port)
+        if checks[0].ok:
+            checks.append(_check_latency(port))
     checks.append(_check_pyserial())
     checks.append(_check_captures(capture_dir or default_capture_dir()))
     return checks

@@ -8,6 +8,7 @@ closure tree.
 from __future__ import annotations
 
 import ast
+import math
 import operator
 from typing import Callable
 
@@ -35,7 +36,12 @@ def _build(node: ast.AST, expr: str) -> Callable[[float], float]:
     if isinstance(node, ast.Constant):
         if isinstance(node.value, bool) or not isinstance(node.value, (int, float)):
             raise FormulaError(f"non-numeric literal in formula {expr!r}")
-        value = float(node.value)
+        try:
+            value = float(node.value)
+        except OverflowError as exc:
+            raise FormulaError(f"literal too large in formula {expr!r}") from exc
+        if not math.isfinite(value):
+            raise FormulaError(f"non-finite literal in formula {expr!r}")
         return lambda x: value
     if isinstance(node, ast.Name):
         if node.id != "x" or not isinstance(node.ctx, ast.Load):

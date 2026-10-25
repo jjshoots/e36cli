@@ -152,10 +152,63 @@ def test_query_strips_echo_before_response():
 # --- client fault handling ---------------------------------------------------
 
 
-def test_echo_mismatch_raises():
+def test_mangled_echo_times_out_not_locks():
+    # A corrupted echo byte means the scan never matches; with nothing after
+    # it on the wire the attempt surfaces as a retryable Timeout.
     tp = FakeTransport([response_frame(0x12, 0xA0)], mangle_echo=True)
-    with pytest.raises(EchoMismatch):
+    with pytest.raises(Timeout):
         DS2Client(tp, FAST).query(0x12, b"\x00")
+
+
+def test_leading_noise_before_echo_is_stripped():
+    # Review finding #1: a single stray 0x00 before the echo must not kill the
+    # request — scan-and-strip recovers the echo and the response behind it.
+    class NoisyEcho(FakeTransport):
+        def send(self, data: bytes) -> None:
+            self.sent.append(bytes(data))
+            self.rx.extend(b"\x00")  # K-line break noise
+            self.rx.extend(data)
+            if self.responses:
+                self.rx.extend(self.responses.pop(0))
+
+    tp = NoisyEcho([response_frame(0x12, 0xA0, b"\x07")])
+    resp = DS2Client(tp, FAST).query(0x12, b"\x00")
+    assert resp.data == b"\x07"
+
+
+def test_echo_mismatch_when_noise_exhausts_budget():
+    class WrongBytes(FakeTransport):
+        def send(self, data: bytes) -> None:
+            self.sent.append(bytes(data))
+            self.rx.extend(b"\xee" * 200)  # nothing resembling the echo
+
+    tp = WrongBytes([])
+    timing = Timing(deadline=0.05, retries=0, inter_frame_gap=0.0, resync_budget=8)
+    with pytest.raises(EchoMismatch):
+        DS2Client(tp, timing).query(0x12, b"\x00")
+
+
+def test_echo_mismatch_is_retried():
+    # First attempt sees garbage (budget exhausted -> EchoMismatch), the
+    # second attempt is clean and must succeed.
+    class FlakyEcho(FakeTransport):
+        def __init__(self, responses):
+            super().__init__(responses)
+            self.first = True
+
+        def send(self, data: bytes) -> None:
+            self.sent.append(bytes(data))
+            if self.first:
+                self.first = False
+                self.rx.extend(b"\xee" * 50)
+                return
+            self.rx.extend(data)
+            if self.responses:
+                self.rx.extend(self.responses.pop(0))
+
+    tp = FlakyEcho([response_frame(0x12, 0xA0, b"\x09")])
+    timing = Timing(deadline=0.05, retries=1, inter_frame_gap=0.0, resync_budget=8)
+    assert DS2Client(tp, timing).query(0x12, b"\x00").data == b"\x09"
 
 
 def test_corrupt_checksum_then_clean_retry_succeeds():
