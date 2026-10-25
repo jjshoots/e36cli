@@ -34,7 +34,10 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
 - 2026-10-25: project started. Research agents gathered DS2/MS41 docs into
   `research/` (NB: ms4x.net wiki DS2 pages are empty stubs; real sources were
   RomRaider's Java DS2 code and the BimmerStein-ECU-Tool Python repo).
-  Full stack + simulator built, 142 tests; nothing verified on the car yet.
+  Full stack + simulator built; adversarial review pass fixed 13 defects
+  (notably: tolerant echo strip, honest wire math, poller failure policy,
+  core-param subset); 171 tests; installed via `uv tool install .`.
+  Nothing verified on the car yet.
   Perf reality: 0x06 RAM reads cap at ~3.3 Hz full set / ~6.4 Hz dashboard
   subset (wire math) — the 0x0B batch telegram (research/ms41-data.md §3.7)
   is the future 10–19 Hz path, unimplemented pending on-car validation.
