@@ -68,6 +68,7 @@ class SerialTransport:
                     parity=parity,
                     stopbits=serial.STOPBITS_ONE,
                     timeout=0.1,
+                    exclusive=True,  # K-line is single-master: refuse a second opener
                 )
             except (OSError, serial.SerialException) as exc:
                 raise TransportError(f"cannot open {port}: {exc}") from exc
@@ -75,8 +76,11 @@ class SerialTransport:
     def send(self, data: bytes) -> None:
         if self._capture is not None:
             self._capture.record("tx", data)
-        self._ser.write(data)
-        self._ser.flush()
+        try:
+            self._ser.write(data)
+            self._ser.flush()
+        except OSError as exc:
+            raise TransportError(f"{self.port}: {exc}") from exc
 
     def recv(self, n: int, deadline: float) -> bytes:
         end = time.monotonic() + deadline
@@ -89,7 +93,11 @@ class SerialTransport:
                     f"wanted {n} bytes, got {len(partial)} within {deadline:.3f}s", partial
                 )
             self._ser.timeout = remaining
-            chunk = self._ser.read(n - len(buf))
+            try:
+                chunk = self._ser.read(n - len(buf))
+            except OSError as exc:  # pyserial SerialException is an OSError:
+                # disconnected cable or a second process reading the same port
+                raise TransportError(f"{self.port}: {exc}") from exc
             if chunk:
                 if self._capture is not None:
                     self._capture.record("rx", bytes(chunk))
