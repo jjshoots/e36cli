@@ -1,0 +1,413 @@
+# MS41 DTC database — BMW-internal single-byte codes (1..255), NOT OBD-II P-codes.
+# Source: openms41 DTC reference table as consolidated by BimmerStein-ECU-Tool dtc.py
+# (facts restated, no GPL code copied); code 46 from BMW MS411DS2.PRG FORTTEXTE.
+# See research/ms41-data.md §4.4 [medium]. Table is shared across MS41/42/43 — entries
+# for electronic throttle / DM-TL / pedal sensors / SMG cannot occur on an MS41 M52.
+# Unassigned codes are absent; report those as "unknown fault code N".
+# Freeze-frame scaling (research §4.3): value = raw * a + b.
+
+[meta]
+source = "research/ms41-data.md §4.3-4.4"
+verified = false
+
+[codes]
+1 = { text = "Ignition coil Cyl 2", system = "Ignition" }
+2 = { text = "Ignition coil Cyl 4", system = "Ignition" }
+3 = { text = "Ignition coil Cyl 6", system = "Ignition" }
+5 = { text = "Fuel injector Cyl 2", system = "Fuel Injectors" }
+6 = { text = "Fuel injector Cyl 1", system = "Fuel Injectors" }
+8 = { text = "Air Flow Meter (HFM)", system = "Air Intake" }
+10 = { text = "Coolant Temperature Sensor", system = "Temperature" }
+11 = { text = "Tank Pressure Sensor / Radiator Outlet Temp", system = "Emissions" }
+12 = { text = "TPS or Plausibility - Max Coolant Temp", system = "Throttle" }
+13 = { text = "Plausibility - Radiator Outlet Temp", system = "Temperature" }
+14 = { text = "Intake Air Temperature Sensor", system = "Temperature" }
+15 = { text = "Plausibility - Cut Out Time", system = "ECU Internal" }
+16 = { text = "AirCon Compressor PWM / Intake Air Temp", system = "A/C" }
+17 = { text = "Plausibility - Engine Coolant Temp", system = "Temperature" }
+18 = { text = "EWS Signal or Camshaft Sensor", system = "Immobiliser" }
+19 = { text = "VANOS Inlet/Exhaust Valve Activation", system = "VANOS" }
+20 = { text = "CHECK ENGINE Light Failure", system = "ECU Internal" }
+21 = { text = "VANOS Electrical Fault or Inlet Valve", system = "VANOS" }
+22 = { text = "Fuel Injector Cyl 3", system = "Fuel Injectors" }
+23 = { text = "Fuel Injector Cyl 6", system = "Fuel Injectors" }
+24 = { text = "Fuel Injector Cyl 4", system = "Fuel Injectors" }
+25 = { text = "Lambda Sensor Heater Bank 1", system = "Lambda / Fueling" }
+27 = { text = "Idle Control Valve Malfunction", system = "Idle Control" }
+29 = { text = "Ignition Coil Cyl 1", system = "Ignition" }
+30 = { text = "Ignition Coil Cyl 3", system = "Ignition" }
+31 = { text = "Ignition Coil Cyl 5", system = "Ignition" }
+33 = { text = "Fuel Injector Cyl 5", system = "Fuel Injectors" }
+35 = { text = "Aux. Air Injection System Relay", system = "Emissions" }
+36 = { text = "DME Main Relay", system = "Power Supply" }
+37 = { text = "DME Main Relay Delay", system = "Power Supply" }
+38 = { text = "Clutch Switch - Plausibility", system = "Input Signals" }
+39 = { text = "Brake Light Switch / Test Switch", system = "Input Signals" }
+40 = { text = "Brake Light Switch / Pedal Signal", system = "Input Signals" }
+42 = { text = "Multi Function Steering Wheel - Plausibility", system = "Communication" }
+43 = { text = "Multi Function Steering Wheel Button", system = "Communication" }
+45 = { text = "Multi Function Steering Wheel Port", system = "Communication" }
+46 = { text = "Fuel-Level Reserve-Lamp Signal", system = "Fuel System" }
+47 = { text = "Temp Sensor Downstream Pre-Cat", system = "Temperature" }
+48 = { text = "DME Control Unit - Self Test 1", system = "ECU Internal" }
+49 = { text = "DME Control Unit", system = "ECU Internal" }
+50 = { text = "EVAP Control Valve", system = "Emissions" }
+51 = { text = "Shut-off Valve Charcoal Filter", system = "Emissions" }
+52 = { text = "Solenoid Valve - Exhaust Flap", system = "Emissions" }
+53 = { text = "Idle Speed Actuator", system = "Idle Control" }
+55 = { text = "Lambda Sensor Heater Bank 2", system = "Lambda / Fueling" }
+56 = { text = "Ignition Current Feedback Resistor Open", system = "Ignition" }
+57 = { text = "Knock Sensor Bank 1", system = "Knock Control" }
+58 = { text = "DME Control Unit - Self Test 2", system = "ECU Internal" }
+59 = { text = "Knock Sensor Bank 2", system = "Knock Control" }
+61 = { text = "Lambda Sensor Heater Bank 2 Post Cat", system = "Lambda / Fueling" }
+62 = { text = "Aux. Air Injection Switching Valve", system = "Emissions" }
+63 = { text = "DME Control Unit / Ambient Temp via CAN", system = "ECU Internal" }
+64 = { text = "Plausibility - Ambient Temperature", system = "Temperature" }
+65 = { text = "Camshaft Position Sensor", system = "Crank/Cam" }
+66 = { text = "DME Control Unit", system = "ECU Internal" }
+67 = { text = "DME Control Unit", system = "ECU Internal" }
+68 = { text = "Tank Venting Valve", system = "Emissions" }
+69 = { text = "Fuel Pump Relay", system = "Fuel System" }
+70 = { text = "DME Control Unit", system = "ECU Internal" }
+71 = { text = "DME Control Unit", system = "ECU Internal" }
+72 = { text = "DME Control Unit", system = "ECU Internal" }
+74 = { text = "AirCon Compressor Relay", system = "A/C" }
+75 = { text = "Lambda Sensor Voltage Bank 1", system = "Lambda / Fueling" }
+76 = { text = "Lambda Sensor Voltage Bank 2", system = "Lambda / Fueling" }
+77 = { text = "Lambda Sensor Voltage Bank 1 Post Cat", system = "Lambda / Fueling" }
+78 = { text = "Lambda Sensor Voltage Bank 2 Post Cat", system = "Lambda / Fueling" }
+79 = { text = "Lambda Sensor Heater Bank 1 Post Cat", system = "Lambda / Fueling" }
+80 = { text = "ABS/ASC Interface", system = "Communication" }
+81 = { text = "MSR Signal - Active Too Long", system = "Communication" }
+82 = { text = "ABS/ASC Interface - Advance Adjustment", system = "Communication" }
+83 = { text = "Crankshaft Sensor", system = "Crank/Cam" }
+90 = { text = "Exhaust Temp Pre Cat Bank 1", system = "Temperature" }
+91 = { text = "Exhaust Temp Pre Cat Bank 2", system = "Temperature" }
+92 = { text = "Exhaust Temp Post Cat Bank 1", system = "Temperature" }
+93 = { text = "Exhaust Temp Post Cat Bank 2", system = "Temperature" }
+94 = { text = "Auxiliary Air - Mass Flow Sensor", system = "Emissions" }
+95 = { text = "Auxiliary Air Valve or Hose Blocked", system = "Emissions" }
+96 = { text = "Auxiliary Air Pump Function", system = "Emissions" }
+97 = { text = "Auxiliary Air - Flow Rate Too Low", system = "Emissions" }
+98 = { text = "Auxiliary Air - Flow Rate Too High", system = "Emissions" }
+99 = { text = "Auxiliary Air Valve Jammed Open", system = "Emissions" }
+100 = { text = "DME Control Unit - Self-Test Failed", system = "ECU Internal" }
+103 = { text = "VANOS Error - Inlet Camshaft", system = "VANOS" }
+104 = { text = "VANOS Error - Exhaust Camshaft", system = "VANOS" }
+105 = { text = "VANOS Error - Position Inlet Camshaft", system = "VANOS" }
+106 = { text = "VANOS Error - Position Exhaust Camshaft", system = "VANOS" }
+109 = { text = "Throttle Valve Plausibility", system = "Throttle" }
+110 = { text = "Pedal Sensor Value Potentiometer 1", system = "Throttle" }
+111 = { text = "Pedal Sensor Value Potentiometer 2", system = "Throttle" }
+112 = { text = "TPS Potentiometer 1", system = "Throttle" }
+113 = { text = "TPS Potentiometer 2", system = "Throttle" }
+114 = { text = "Throttle Valve Final Stage", system = "Throttle" }
+115 = { text = "Reference Voltage Regulator 1", system = "ECU Internal" }
+116 = { text = "Reference Voltage Regulator 2", system = "ECU Internal" }
+117 = { text = "Plausibility - Pedal Position Sensor 1/2", system = "Throttle" }
+118 = { text = "Plausibility - TPS 1/2", system = "Throttle" }
+119 = { text = "Throttle Valve Sensor Mechanical Error", system = "Throttle" }
+120 = { text = "Plausibility Pedal Sensor or TPS", system = "Throttle" }
+122 = { text = "Engine Oil Temperature", system = "Temperature" }
+123 = { text = "Map Cooling Thermostat Control", system = "Cooling" }
+124 = { text = "Activation DISA Solenoid", system = "Air Intake" }
+125 = { text = "Activation Electric Fan", system = "Cooling" }
+126 = { text = "Activation Tank Leak Pump Solenoid", system = "Emissions" }
+127 = { text = "Activation Pump Solenoid", system = "Emissions" }
+128 = { text = "DME/EWS Communication", system = "Immobiliser" }
+129 = { text = "CAN Signal SMG 1", system = "Communication" }
+130 = { text = "CAN Signal ASC - Timeout", system = "Communication" }
+131 = { text = "CAN Signal Instrument Cluster - Timeout", system = "Communication" }
+132 = { text = "CAN Signal Instrument Cluster - Timeout", system = "Communication" }
+133 = { text = "CAN Signal ASC - Timeout", system = "Communication" }
+134 = { text = "SMG Intervention - Plausibility", system = "Communication" }
+135 = { text = "Throttle Valve Re-Adaptation Required", system = "Throttle" }
+136 = { text = "Throttle Valve Spring Test Failed", system = "Throttle" }
+137 = { text = "CAN Signal - Steering Angle Sensor", system = "Communication" }
+139 = { text = "CAN Signal - Tank Level Sensor", system = "Communication" }
+140 = { text = "Tank Leak Pump Solenoid Reed Switch", system = "Emissions" }
+141 = { text = "Tank Leak Pump Reed Switch Stuck", system = "Emissions" }
+142 = { text = "Tank Leak Pump Reed Switch Open / DMTL", system = "Emissions" }
+143 = { text = "Tank Ventilation / Leakage", system = "Emissions" }
+144 = { text = "Fuel System Large Leak", system = "Emissions" }
+145 = { text = "Fuel System Small Leak", system = "Emissions" }
+146 = { text = "EVAP Small Leak", system = "Emissions" }
+147 = { text = "Pedal Position Sensor Supply Channel 1", system = "Throttle" }
+149 = { text = "Air Flow Sensor or Pedal Sensor Mismatch", system = "Air Intake" }
+150 = { text = "Lambda Post Cat Bank 1 Max Limit", system = "Lambda / Fueling" }
+151 = { text = "Lambda Post Cat Bank 2 Max Limit", system = "Lambda / Fueling" }
+152 = { text = "Lambda Post Cat Bank 1 Min Limit", system = "Lambda / Fueling" }
+153 = { text = "Lambda Pre Cat Bank 2 Max Limit", system = "Lambda / Fueling" }
+154 = { text = "Lambda Pre Cat Bank 2 Min Limit", system = "Lambda / Fueling" }
+155 = { text = "Lambda Pre Cat Bank 2 No Signal", system = "Lambda / Fueling" }
+156 = { text = "Lambda Pre Cat Bank 1 No Signal", system = "Lambda / Fueling" }
+157 = { text = "Lambda Post Cat Bank 1 Min Limit", system = "Lambda / Fueling" }
+159 = { text = "Lambda Post Cat Bank 2 Max Limit", system = "Lambda / Fueling" }
+160 = { text = "Lambda Post Cat Bank 2 / Throttle Stuck", system = "Lambda / Fueling" }
+161 = { text = "Throttle Valve Stuck", system = "Throttle" }
+162 = { text = "Throttle Valve Control Deviation", system = "Throttle" }
+168 = { text = "Pedal Position Sensor Pot Supply 1", system = "Throttle" }
+169 = { text = "Throttle Valve Output Stage Cutoff", system = "Throttle" }
+170 = { text = "DME Control Unit - Self Test Failed", system = "ECU Internal" }
+171 = { text = "Plausibility - Throttle Valve", system = "Throttle" }
+172 = { text = "Pedal Sensor Potentiometer 1/2 Short", system = "Throttle" }
+173 = { text = "TPS Potentiometer 1/2 Short Circuit", system = "Throttle" }
+174 = { text = "Throttle Valve Potentiometer 1/2 Adaptation", system = "Throttle" }
+175 = { text = "Pedal Sensor 1 Adaptation", system = "Throttle" }
+176 = { text = "Pedal Sensor 2 Adaptation", system = "Throttle" }
+186 = { text = "Voltage Post Cat Bank 1", system = "Lambda / Fueling" }
+187 = { text = "Voltage Post Cat Bank 2", system = "Lambda / Fueling" }
+188 = { text = "Voltage Pre Cat Bank 1", system = "Lambda / Fueling" }
+189 = { text = "Voltage Pre Cat Bank 2", system = "Lambda / Fueling" }
+190 = { text = "EVAP Reed Switch Open", system = "Emissions" }
+191 = { text = "EVAP Reed Switch Closed", system = "Emissions" }
+192 = { text = "EVAP Reed Switch Open", system = "Emissions" }
+193 = { text = "EVAP Check Hoses", system = "Emissions" }
+194 = { text = "EVAP Large Leak", system = "Emissions" }
+195 = { text = "EVAP Small Leak", system = "Emissions" }
+196 = { text = "EVAP Electrical Valve / Barometric Pressure", system = "Emissions" }
+197 = { text = "EVAP Barometric Pressure Sensor", system = "Emissions" }
+198 = { text = "Cat Efficiency during Start Bank 1", system = "Catalyst" }
+199 = { text = "Cat Efficiency during Start Bank 2", system = "Catalyst" }
+200 = { text = "Lambda Regulation Bank 1 Pre Cat", system = "Lambda / Fueling" }
+201 = { text = "Lambda Regulation Bank 2 Pre Cat", system = "Lambda / Fueling" }
+202 = { text = "Lambda Regulation Bank 1 Post Cat", system = "Lambda / Fueling" }
+203 = { text = "Lambda Regulation Bank 2 Post Cat", system = "Lambda / Fueling" }
+204 = { text = "Idle Control System - Idle Speed Not Plausible", system = "Idle Control" }
+208 = { text = "EWS RPM Signal Error", system = "Immobiliser" }
+209 = { text = "EWS Message Error", system = "Immobiliser" }
+210 = { text = "Ignition Feedback Resistor (ZSR)", system = "Ignition" }
+211 = { text = "Idle Speed Actuator - Mechanical", system = "Idle Control" }
+212 = { text = "VANOS Bank 1 - Mechanical", system = "VANOS" }
+214 = { text = "Vehicle Speed Signal (VSS)", system = "Speed" }
+215 = { text = "Lambda Sensor Bank 1", system = "Lambda / Fueling" }
+216 = { text = "Lambda Sensor Bank 2", system = "Lambda / Fueling" }
+217 = { text = "CAN Bus Error - EGS Signal Not Present", system = "Communication" }
+218 = { text = "CAN Module Warning", system = "Communication" }
+219 = { text = "CAN Module Offline", system = "Communication" }
+220 = { text = "Lambda Voltage Range Bank 1 Sensor 1", system = "Lambda / Fueling" }
+221 = { text = "Lambda Voltage Range Bank 2 Sensor 1", system = "Lambda / Fueling" }
+222 = { text = "Low Coolant Temp / Lambda Sensor Control", system = "Temperature" }
+223 = { text = "Lambda Sensor Switching Bank 1 Sensor 2", system = "Lambda / Fueling" }
+224 = { text = "Lambda Sensor Switching Bank 2 Sensor 2", system = "Lambda / Fueling" }
+225 = { text = "Cat Efficiency Bank 1", system = "Catalyst" }
+226 = { text = "Cat Efficiency Bank 2", system = "Catalyst" }
+227 = { text = "Mixture Deviation Bank 1", system = "Lambda / Fueling" }
+228 = { text = "Mixture Deviation Bank 2", system = "Lambda / Fueling" }
+229 = { text = "Lambda Sensor Switching Bank 1", system = "Lambda / Fueling" }
+230 = { text = "Lambda Sensor Switching Bank 2", system = "Lambda / Fueling" }
+231 = { text = "Lambda Sensor Switching Bank 1 Pre Cat", system = "Lambda / Fueling" }
+232 = { text = "Lambda Sensor Switching Bank 2 Pre Cat", system = "Lambda / Fueling" }
+233 = { text = "Catalytic Converter Overall Efficiency Bank 1", system = "Catalyst" }
+234 = { text = "Catalytic Converter Overall Efficiency Bank 2", system = "Catalyst" }
+235 = { text = "Lambda Heater Bank 1 Post Cat", system = "Lambda / Fueling" }
+236 = { text = "Lambda Heater Bank 2 Post Cat", system = "Lambda / Fueling" }
+238 = { text = "Misfire Cyl 1", system = "Ignition" }
+239 = { text = "Misfire Cyl 2", system = "Ignition" }
+240 = { text = "Misfire Cyl 3", system = "Ignition" }
+241 = { text = "Misfire Cyl 4", system = "Ignition" }
+242 = { text = "Misfire Cyl 5", system = "Ignition" }
+243 = { text = "Misfire Cyl 6", system = "Ignition" }
+244 = { text = "Crankshaft Interval Timing", system = "Crank/Cam" }
+245 = { text = "Aux Air Injection System Bank 1", system = "Emissions" }
+246 = { text = "Aux Air Injection System Bank 2", system = "Emissions" }
+247 = { text = "Aux Air Injection System - Incorrect Flow", system = "Emissions" }
+248 = { text = "Pre Cat Converter Efficiency Bank 1", system = "Catalyst" }
+249 = { text = "Pre Cat Converter Efficiency Bank 2", system = "Catalyst" }
+250 = { text = "Tank Venting Valve Function", system = "Emissions" }
+251 = { text = "Tank Ventilation Diagnosis Error", system = "Emissions" }
+252 = { text = "Tank Ventilation System Vacuum", system = "Emissions" }
+253 = { text = "Charcoal Filter Shut-off Valve Stuck Shut", system = "Emissions" }
+254 = { text = "Tank Ventilation System Large Air Leak", system = "Emissions" }
+255 = { text = "Tank Ventilation System Valve Stuck Open", system = "Emissions" }
+
+# Freeze-frame environment value identifiers: value = raw * a + b (research §4.3)
+[[freeze_frame]]
+id = 0x01
+label = "Engine speed"
+unit = "rpm"
+a = 32.0
+b = 0.0
+
+[[freeze_frame]]
+id = 0x02
+label = "Air mass"
+unit = "kg/h"
+a = 4.0
+b = 0.0
+
+[[freeze_frame]]
+id = 0x03
+label = "Spark duration (low range)"
+unit = "ms"
+a = 0.0196
+b = 0.0
+
+[[freeze_frame]]
+id = 0x04
+label = "Spark duration (high range)"
+unit = "ms"
+a = 2.56
+b = 0.0
+
+[[freeze_frame]]
+id = 0x05
+label = "Lambda controller bank 1"
+unit = "%"
+a = 0.3906
+b = -50.0
+
+[[freeze_frame]]
+id = 0x06
+label = "Lambda controller bank 2"
+unit = "%"
+a = 0.3906
+b = -50.0
+
+[[freeze_frame]]
+id = 0x07
+label = "Oxygen-sensor voltage 1"
+unit = "V"
+a = 0.0196
+b = 0.0
+
+[[freeze_frame]]
+id = 0x08
+label = "Oxygen-sensor voltage 2"
+unit = "V"
+a = 0.0196
+b = 0.0
+
+[[freeze_frame]]
+id = 0x09
+label = "Battery voltage"
+unit = "V"
+a = 0.1020
+b = 0.0
+
+[[freeze_frame]]
+id = 0x0A
+label = "Throttle angle"
+unit = "°"
+a = 0.4686
+b = 0.0
+
+[[freeze_frame]]
+id = 0x0B
+label = "Idle actuator"
+unit = "%"
+a = 0.3906
+b = 0.0
+
+[[freeze_frame]]
+id = 0x0C
+label = "Engine load"
+unit = "mg/stroke"
+a = 5.4471
+b = 0.0
+
+[[freeze_frame]]
+id = 0x0D
+label = "Vehicle speed"
+unit = "km/h"
+a = 1.0
+b = 0.0
+
+[[freeze_frame]]
+id = 0x0E
+label = "Gear information"
+unit = "raw"
+a = 1.0
+b = 0.0
+
+[[freeze_frame]]
+id = 0x0F
+label = "Camshaft angle"
+unit = "°"
+a = 32.0
+b = 0.0
+
+[[freeze_frame]]
+id = 0x10
+label = "Engine operating state"
+unit = "raw"
+a = 1.0
+b = 0.0
+
+[[freeze_frame]]
+id = 0x11
+label = "Digital fault code 1"
+unit = "raw"
+a = 1.0
+b = 0.0
+
+[[freeze_frame]]
+id = 0x12
+label = "Digital fault code 2"
+unit = "raw"
+a = 1.0
+b = 0.0
+
+[[freeze_frame]]
+id = 0x13
+label = "Coolant-sensor voltage"
+unit = "V"
+a = 0.0196
+b = 0.0
+
+[[freeze_frame]]
+id = 0x14
+label = "Mean rich oxygen-sensor value"
+unit = "V"
+a = 32.0
+b = 0.0
+
+[[freeze_frame]]
+id = 0x15
+label = "Knock-signal gain"
+unit = "ratio"
+a = 0.00392
+b = 0.0
+
+[[freeze_frame]]
+id = 0x16
+label = "Noise value"
+unit = "V"
+a = 0.02
+b = 0.0
+
+[[freeze_frame]]
+id = 0x17
+label = "Oxygen-sensor heater"
+unit = "%"
+a = 0.391
+b = 0.0
+
+[[freeze_frame]]
+id = 0x18
+label = "Coolant temperature"
+unit = "°C"
+a = 0.7471
+b = -48.0
+
+[[freeze_frame]]
+id = 0x19
+label = "Intake-air temperature"
+unit = "°C"
+a = 0.7471
+b = -48.0
+
+[[freeze_frame]]
+id = 0x1A
+label = "Air-flow-meter voltage"
+unit = "V"
+a = 0.0196
+b = 0.0
+
+[[freeze_frame]]
+id = 0x1B
+label = "Tank-vent valve command"
+unit = "%"
+a = 0.391
+b = 0.0

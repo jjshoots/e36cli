@@ -1,0 +1,320 @@
+# MS41.1 — US/OBD-II M52 (E36 328i/323is, E39 528i, Z3 2.8 US), Alpina B10 3.2.
+# Addresses: BimmerStein MS41 Logger Definitions XML, column ECU-ID 1437806
+# (https://github.com/CAATZ/BimmerStein-ECU-Tool), restated via research/ms41-data.md §3.6.
+# All RAM reads via DS2 cmd 0x06 are little-endian. verified=false until checked on the car.
+#
+# Known scaling conflicts (research/ms41-data.md §7):
+# - Coolant: RAM 0xDA5A uses 0.747x-48 (matches DTC freeze-frame 0.7471x-48); the 0x0B 03
+#   group read instead encodes coolant as 108-0.45x. Do NOT cross-apply — this profile is
+#   RAM-read scaling only.
+# - ADC volts/bit: one capture gives 0.0193, BMW freeze-frame table 0.0196 (~5/255).
+#   For 10-bit RAM ADC values we use (x & 0x3FF) * 5 / 1023 per the logger definition.
+
+[profile]
+id = "ms41.1"
+description = "MS41.1 (US OBD-II M52 / Alpina S52B32) — ECU ID 1437806/1437804"
+match_hw = ["1437806", "1437804"]
+# ZB numbers from SP-Daten MDS411 (R3VLimited archive, research §1.2)
+match_zb = ["1438067", "1438071", "1438065", "7500903"]
+match_sw = ["1438068", "1438072", "1438066", "7500904"]
+
+# --- common across all MS41 ECU IDs (research §3.6.1) ---
+
+[[param]]
+name = "rpm"
+label = "Engine RPM"
+unit = "rpm"
+addr = 0xDA2A
+size = 2
+formula = "x"
+source = "BimmerStein logger XML P8; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "maf"
+label = "Mass air flow"
+unit = "kg/h"
+addr = 0xDA34
+size = 2
+formula = "x * 0.25"
+source = "BimmerStein logger XML P12; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "idle_valve"
+label = "Idle valve pos"
+unit = "%"
+addr = 0xDA36
+size = 2
+signed = true
+formula = "x * 0.00153"
+source = "BimmerStein logger XML E9; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "iat"
+label = "Intake air temp"
+unit = "°C"
+addr = 0xDA50
+size = 1
+formula = "x * 0.747 - 48"
+source = "BimmerStein logger XML P11; cross-checked vs DTC freeze-frame 0.7471x-48; research §3.6.1"
+verified = false
+
+[[param]]
+name = "evap_duty"
+label = "EVAP purge duty"
+unit = "%"
+addr = 0xDA56
+size = 1
+formula = "x * 100 / 255"
+source = "BimmerStein logger XML; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "coolant_temp"
+label = "Coolant temp"
+unit = "°C"
+addr = 0xDA5A
+size = 1
+formula = "x * 0.747 - 48"
+source = "BimmerStein logger XML P2; cross-checked vs DTC freeze-frame scaling; research §3.6.1"
+verified = false
+
+[[param]]
+name = "vss"
+label = "Vehicle speed"
+unit = "km/h"
+addr = 0xDA63
+size = 1
+formula = "x"
+source = "BimmerStein logger XML P9; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "ignition_advance"
+label = "Ignition advance"
+unit = "°"
+addr = 0xE989
+size = 1
+formula = "0.373 * x - 23.6"
+source = "BimmerStein logger XML P10; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "knock_retard"
+label = "Knock retard (current)"
+unit = "°"
+addr = 0xE98D
+size = 1
+formula = "(x - 128) * 0.375"
+source = "BimmerStein logger XML E217; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "knock_retard_global"
+label = "Knock retard (global)"
+unit = "°"
+addr = 0xE9D9
+size = 1
+formula = "(x - 128) * 0.375"
+source = "BimmerStein logger XML E24; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "vanos_angle"
+label = "VANOS angle"
+unit = "°"
+addr = 0xE9E6
+size = 1
+formula = "x * 0.3745"
+source = "BimmerStein logger XML E11; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "tps"
+label = "Throttle position"
+unit = "%"
+addr = 0xE8D0
+size = 1
+formula = "x * 100 / 255"
+source = "BimmerStein logger XML P13; research/ms41-data.md §3.6.2"
+verified = false
+
+[[param]]
+name = "tps_volts"
+label = "TPS voltage"
+unit = "V"
+addr = 0xE8DA
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein live_data.py; research/ms41-data.md §3.6.1 extras"
+verified = false
+
+[[param]]
+name = "o2_front_b1"
+label = "O2 front bank 1"
+unit = "V"
+addr = 0xFA9A
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein logger XML; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "o2_front_b2"
+label = "O2 front bank 2"
+unit = "V"
+addr = 0xFA98
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein logger XML; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "o2_rear_b1"
+label = "O2 rear bank 1"
+unit = "V"
+addr = 0xFA96
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein live_data.py; research/ms41-data.md §3.6.1 extras"
+verified = false
+
+[[param]]
+name = "o2_rear_b2"
+label = "O2 rear bank 2"
+unit = "V"
+addr = 0xFA94
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein live_data.py; research/ms41-data.md §3.6.1 extras"
+verified = false
+
+[[param]]
+name = "maf_volts"
+label = "MAF voltage"
+unit = "V"
+addr = 0xFA9E
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein logger XML P18; research/ms41-data.md §3.6.1"
+verified = false
+
+[[param]]
+name = "engine_state_bits"
+label = "Engine state bits"
+unit = "bits"
+addr = 0xFD24
+size = 1
+formula = "x"
+source = "BimmerStein logger XML (bit0=closed throttle inv, bit1=full load); research §3.6.1"
+verified = false
+
+[[param]]
+name = "operating_state_bits"
+label = "Operating state bits"
+unit = "bits"
+addr = 0xFD14
+size = 1
+formula = "x"
+source = "BimmerStein logger XML (bit1=start, bit3=part load, bit5=decel cut); research §3.6.1"
+verified = false
+
+# --- MS41.1 (ECU ID 1437806) specific addresses (research §3.6.2) ---
+
+[[param]]
+name = "injector_pw"
+label = "Injector pulse width"
+unit = "ms"
+addr = 0xEF96
+size = 2
+formula = "x * 0.00534"
+source = "BimmerStein logger XML, 1437806 column; research/ms41-data.md §3.6.2"
+verified = false
+
+[[param]]
+name = "stft_b1"
+label = "Short trim B1"
+unit = "%"
+addr = 0xF036
+size = 2
+formula = "(x - 32768) * 100 / 65535"
+source = "BimmerStein logger XML E13, 1437806 column; research §3.6.2"
+verified = false
+
+[[param]]
+name = "stft_b2"
+label = "Short trim B2"
+unit = "%"
+addr = 0xF0F2
+size = 2
+formula = "(x - 32768) * 100 / 65535"
+source = "BimmerStein logger XML E14, 1437806 column; research §3.6.2"
+verified = false
+
+[[param]]
+name = "ltft_b1"
+label = "Long trim B1"
+unit = "%"
+addr = 0xF048
+size = 2
+formula = "(x - 32768) * 100 / 65535"
+source = "BimmerStein logger XML E21, 1437806 column; research §3.6.2"
+verified = false
+
+[[param]]
+name = "ltft_b2"
+label = "Long trim B2"
+unit = "%"
+addr = 0xF104
+size = 2
+formula = "(x - 32768) * 100 / 65535"
+source = "BimmerStein logger XML E22, 1437806 column; research §3.6.2"
+verified = false
+
+[[param]]
+name = "add_trim_b1"
+label = "Additive trim B1"
+unit = "ms"
+addr = 0xF040
+size = 2
+formula = "(x - 32768) * 0.00534"
+source = "BimmerStein logger XML, 1437806 column; same LSB as injector PW; research §3.6.2"
+verified = false
+
+[[param]]
+name = "add_trim_b2"
+label = "Additive trim B2"
+unit = "ms"
+addr = 0xF0FC
+size = 2
+formula = "(x - 32768) * 0.00534"
+source = "BimmerStein logger XML, 1437806 column; research §3.6.2"
+verified = false
+
+[[param]]
+name = "load"
+label = "Engine load"
+unit = "mg/stroke"
+addr = 0xFC52
+size = 2
+formula = "x * 0.021195"
+source = "BimmerStein logger XML E2, 1437806 column; research §3.6.2"
+verified = false
+
+[[param]]
+name = "battery"
+label = "Battery voltage"
+unit = "V"
+addr = 0xFC9D
+size = 1
+formula = "x * 0.10196"
+source = "BimmerStein logger XML P17, 1437806 column; research §3.6.2"
+verified = false
