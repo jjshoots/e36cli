@@ -142,8 +142,9 @@ No async framework — the wire is 960 B/s; threads suffice.
 
 ## Open items (filled from research / garage sessions)
 
-- [ ] Exact MS41 live-data read mechanism (status group vs RAM read) + offsets
-- [ ] Ident response field layout for MS41.x
-- [ ] DTC read/clear command bytes + response layout
-- [ ] Status byte semantics (ACK/NAK values)
+- [x] Exact MS41 live-data read mechanism (status group vs RAM read) + offsets
+      — RAM reads via 0x06, profiles populated (research/ms41-data.md §3.6)
+- [x] Ident response field layout for MS41.x — 42-byte ASCII (research §2)
+- [x] DTC read/clear command bytes + response layout — 04 xx / 05 (research §4)
+- [x] Status byte semantics (ACK/NAK values) — A0/A1/A2/B0/FF (ds2-protocol §2)
 - [ ] Verified-on-car markers (all `verified = false` until garage session 1)
