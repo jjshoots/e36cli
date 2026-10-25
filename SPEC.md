@@ -163,4 +163,10 @@ No async framework — the wire is 960 B/s; threads suffice.
 - [x] Ident response field layout for MS41.x — 42-byte ASCII (research §2)
 - [x] DTC read/clear command bytes + response layout — 04 xx / 05 (research §4)
 - [x] Status byte semantics (ACK/NAK values) — A0/A1/A2/B0/FF (ds2-protocol §2)
-- [ ] Verified-on-car markers (all `verified = false` until garage session 1)
+- [x] Verified-on-car markers — garage session 1 (2026-10-25) verified the 8
+      core physics params (rpm, maf, iat, coolant, vss, ignition, vanos, tps)
+      on ECU 1429373; promoted in ms41.0-1429373 + ms41-generic profiles with
+      `verified_source` citing tests/fixtures/car-live-once.jsonl. DTC record
+      layout + hours counter also confirmed (research §4.2). Still unverified:
+      the other common params (O2 ADCs, knock, idle valve, state bits) and all
+      variant-specific addresses.

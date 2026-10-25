@@ -32,6 +32,17 @@ record and continue. Everything is auto-captured to
 7. `e36 log idle-warmup.csv` for a few minutes of warmup.
 8. `--timing-debug` on: record achieved poll rate (target ≥ 10 Hz).
 
+## Session log
+
+- **Session 1 — 2026-10-25, ignition on + idling: DONE.** doctor ✓ (after
+  chmod/latency sudo fixes), ident ✓ (ECU 1429373 = Euro MS41.0, profile
+  added), dtc read ✓ (217/25/52, ages decoded), live --once ✓ (8 params
+  physically plausible → promoted verified). Goldens in tests/fixtures/.
+  Gotcha hit: running `e36 live` in a second window while another e36 command
+  runs kills both — single-master wire; port is now opened exclusively.
+  Still pending from session 2 list: throttle-blip coherence check, warmup
+  log, measured poll rate (step 8 target is now ≥ 2.5 Hz core, not 10 Hz).
+
 ## After any session
 
 - Copy the session's capture files into `tests/fixtures/` (golden names:

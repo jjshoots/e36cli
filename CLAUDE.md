@@ -38,7 +38,24 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   (notably: tolerant echo strip, honest wire math, poller failure policy,
   core-param subset); 171 tests; installed via `uv tool install .`.
   Nothing verified on the car yet.
-  Perf reality: 0x06 RAM reads cap at ~3.3 Hz full set / ~6.4 Hz dashboard
-  subset (wire math) — the 0x0B batch telegram (research/ms41-data.md §3.7)
-  is the future 10–19 Hz path, unimplemented pending on-car validation.
-  Next milestone: garage session 1 (GARAGE.md), then promote verified params.
+  Perf reality: honest wire math (11 bits/byte + echo) puts 0x06 RAM reads at
+  ~1.9 Hz full set / ~3.5 Hz core subset — the 0x0B batch telegram
+  (research/ms41-data.md §3.7) is the future 10–19 Hz path, unimplemented
+  pending on-car validation.
+- 2026-10-25 (later): **garage session 1 done, car talks.** The "2.8" DME is
+  NOT the predicted US MS41.1 — ident says **ECU ID 1429373, Euro MS41.0**
+  (SW index 59, built 04/96). New profile `ms41.0-1429373` (common params
+  only; the logger XML has no 1429373 column for variant-specific addresses —
+  no trims/battery/injector-PW until we find or derive them). 8 physics params
+  verified at idle and promoted (`verified_source` cites the capture); DTC
+  record layout + hours-counter ages confirmed byte-exact (research §4.2 note;
+  responses carry a trailing pad byte). Real captures are replay goldens in
+  tests/fixtures/ (car-ident/car-dtc/car-live-once) with CLI replay tests.
+  Hard lesson: **the K-line is single-master** — a second e36 process on the
+  port steals bytes; SerialTransport now opens with exclusive=true.
+  Car's stored faults: 217 (EGS CAN), 25 (lambda heater B1), 52 (exhaust flap)
+  — all "currently present", left uncleared.
+  Next: session 2 (engine running checks per GARAGE.md — throttle-blip
+  coherence, log warmup, measure real poll rate); find 1429373 trim/battery
+  addresses (RomRaider login-gated sheet? firmware dump?); then the 0x0B
+  batch telegram for 10+ Hz.

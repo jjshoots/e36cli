@@ -21,7 +21,8 @@ addr = 0xDA2A
 size = 2
 formula = "x"
 source = "BimmerStein logger XML P8; research/ms41-data.md §3.6.1"
-verified = false
+verified = true
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
 [[param]]
 name = "maf"
@@ -32,7 +33,8 @@ addr = 0xDA34
 size = 2
 formula = "x * 0.25"
 source = "BimmerStein logger XML P12; research/ms41-data.md §3.6.1"
-verified = false
+verified = true
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
 [[param]]
 name = "idle_valve"
@@ -54,7 +56,8 @@ addr = 0xDA50
 size = 1
 formula = "x * 0.747 - 48"
 source = "BimmerStein logger XML P11; cross-checked vs DTC freeze-frame 0.7471x-48; research §3.6.1"
-verified = false
+verified = true
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
 [[param]]
 name = "evap_duty"
@@ -75,7 +78,8 @@ addr = 0xDA5A
 size = 1
 formula = "x * 0.747 - 48"
 source = "BimmerStein logger XML P2; cross-checked vs DTC freeze-frame scaling; research §3.6.1"
-verified = false
+verified = true
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
 [[param]]
 name = "vss"
@@ -86,7 +90,8 @@ addr = 0xDA63
 size = 1
 formula = "x"
 source = "BimmerStein logger XML P9; research/ms41-data.md §3.6.1"
-verified = false
+verified = true
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
 [[param]]
 name = "ignition_advance"
@@ -97,7 +102,8 @@ addr = 0xE989
 size = 1
 formula = "0.373 * x - 23.6"
 source = "BimmerStein logger XML P10; research/ms41-data.md §3.6.1"
-verified = false
+verified = true
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
 [[param]]
 name = "knock_retard"
@@ -128,7 +134,8 @@ addr = 0xE9E6
 size = 1
 formula = "x * 0.3745"
 source = "BimmerStein logger XML E11; research/ms41-data.md §3.6.1"
-verified = false
+verified = true
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
 [[param]]
 name = "tps"
@@ -139,7 +146,8 @@ addr = 0xE8D0
 size = 1
 formula = "x * 100 / 255"
 source = "BimmerStein logger XML P13; research/ms41-data.md §3.6.2"
-verified = false
+verified = true
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
 [[param]]
 name = "tps_volts"

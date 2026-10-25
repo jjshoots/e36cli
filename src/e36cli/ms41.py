@@ -98,6 +98,7 @@ class ParamSpec:
     formula: str
     source: str
     verified: bool = False
+    verified_source: str = ""  # capture file / session that proved this param
     signed: bool = False
     endian: str = "little"  # raw 0x06 RAM reads are little-endian
     mask: int | None = None
@@ -218,6 +219,7 @@ def _validate_param(entry: dict) -> ParamSpec:
         formula=entry.get("formula", "x"),
         source=entry.get("source", ""),
         verified=entry.get("verified", False),
+        verified_source=entry.get("verified_source", ""),
         signed=entry.get("signed", False),
         endian=entry.get("endian", "little"),
         mask=entry.get("mask"),
@@ -237,6 +239,10 @@ def _validate_param(entry: dict) -> ParamSpec:
         raise ValueError("signed + mask is ambiguous (mask a sign-extended value?); pick one")
     if not isinstance(spec.signed, bool) or not isinstance(spec.verified, bool) or not isinstance(spec.core, bool):
         raise ValueError("signed/verified/core must be booleans")
+    if not isinstance(spec.verified_source, str):
+        raise ValueError(f"verified_source must be a string, got {spec.verified_source!r}")
+    if spec.verified and not spec.verified_source:
+        raise ValueError("verified = true requires verified_source (SPEC invariant 3)")
     fn = compile_formula(spec.formula)  # FormulaError is a ValueError
     # Probe the compiled formula over the raw range so bad arithmetic
     # (x / 0, overflow to inf) fails at load, not mid-poll.

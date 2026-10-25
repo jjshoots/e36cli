@@ -31,7 +31,7 @@ def profiles():
 
 
 def test_all_profiles_load(profiles):
-    assert set(profiles) == {"ms41.0", "ms41.1", "ms41.2", "ms41-generic"}
+    assert set(profiles) == {"ms41.0", "ms41.0-1429373", "ms41.1", "ms41.2", "ms41-generic"}
 
 
 def test_profile_schema(profiles):
@@ -43,7 +43,10 @@ def test_profile_schema(profiles):
             assert 0 <= p.addr <= 0xFFFFFF
             assert p.size in (1, 2, 4)
             assert p.endian in ("big", "little")
-            assert p.verified is False  # nothing verified until a garage session
+            # verified params must cite the capture that proved them (garage
+            # session 1, 2026-10-25, verified the 8 core physics params)
+            if p.verified:
+                assert p.verified_source, f"{profile.id}:{p.name} verified without source"
             assert p.source, f"{profile.id}:{p.name} missing provenance"
             assert callable(p._fn)  # formula compiled at load
 

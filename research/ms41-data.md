@@ -574,6 +574,15 @@ Empty-DTC edge case: a stock MS41 returns payload `00 00` (count 0 plus a pad by
 
 ### 4.2 Record layout
 
+> **[verified on car 2026-10-25]** (ECU 1429373, tests/fixtures/car-dtc.jsonl):
+> `04 01` answered with count=3 then 3 × 10-byte records exactly as below, plus
+> **one trailing pad byte** (0x74) — payload length 31 is NOT a multiple of the
+> record size; decoders must tolerate the tail. Codes 217/25/52, status
+> 0x78/0x74/0x64, freq 1/13/41, hours stamps 0x42F7/0x42F7/0x42F9 all decoded
+> correctly. `04 00` (prepare) answered `A0 03 00 00 43 F2` — current
+> operating-hours counter at data[3:5] BE (0x43F2 → 1739.4 h), giving fault
+> ages 25.1/25.1/24.9 h. No `A1 busy` seen on either command.
+
 **Stored record (10 bytes):**
 
 | Byte | Meaning |
