@@ -84,14 +84,21 @@ verified = false
 | `e36 raw HEX...` | Send arbitrary frame, print hex response (the probe tool) | caution |
 | `e36 captures` | List/show capture sessions | no |
 
-Global options: `--port PATH` (default `/dev/ttyUSB0`), `--sim [FIXTURE]`
-(simulated transport, optional capture replay), `--profile ID` (override
-auto-match), `--timing-debug` (per-request latency stats to stderr).
+Global options: `--port PATH` (default `/dev/ttyUSB0`), `--sim` (simulated
+transport) / `--sim-fixture PATH` (capture replay, implies `--sim`),
+`--profile ID` (override auto-match), `--timing-debug` (per-request latency
+stats to stderr). `e36 log` also takes `--samples N` for bounded runs.
+Env hooks: `E36CLI_CAPTURE_DIR`, `E36CLI_SIM_DTCS` (seed sim fault codes).
 
 ## Performance targets
 
-- Full param set refresh ≥ 10 Hz on real hardware (batch RAM reads into the
-  fewest frames the protocol allows; budget: 9600 baud ≈ 960 B/s).
+- Wire-limit honesty (byte math at 9600 baud ≈ 960 B/s): the full 29-param
+  ms41.1 set spans ~9 KB of RAM → 12 batched 0x06 reads → **~3.3 Hz ceiling**;
+  the ~11-param dashboard core sustains **~6.4 Hz**. Targets: ≥ 3 Hz full set,
+  ≥ 6 Hz dashboard subset, pinned by perf tests against the sim.
+- Path to 10–19 Hz (future, needs on-car validation): the MS41 batch telegram
+  (`0B 01` arm address list → `0B 00` poll, 38-byte response) per
+  research/ms41-data.md §3.7 — medium confidence, not implemented in v1.
 - `e36 live` render decoupled from polling (poller thread → latest-value store →
   Rich refresh at 4–10 fps). Dropped frames are fine; stale data must show age
   if > 1 s.
