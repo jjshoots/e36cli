@@ -1,0 +1,30 @@
+[project]
+name = "e36cli"
+version = "0.1.0"
+description = "High-performance DS2 diagnostic CLI for BMW E36 (MS41) over K-line"
+requires-python = ">=3.11"
+dependencies = [
+    "pyserial>=3.5",
+    "typer>=0.12",
+    "rich>=13.7",
+]
+
+[project.scripts]
+e36 = "e36cli.cli:app"
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0",
+    "hypothesis>=6.100",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/e36cli"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "-q"
