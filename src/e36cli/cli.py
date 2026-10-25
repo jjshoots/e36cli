@@ -16,7 +16,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import dtc as dtcmod
-from . import ds2, live, ms41
+from . import ds2, live, ms41, panel as panelmod
 from .capture import CaptureWriter, default_capture_dir, list_sessions
 from .doctor import hard_failure, run_checks
 from .sim import SimDtc, SimTransport, SimulatedDME
@@ -185,27 +185,47 @@ def ident(ctx: typer.Context) -> None:
     console.print(table)
 
 
+# Euro E36 body modules historically need BMW's ADS interface (K-line as TXD,
+# L-line as RXD) — a plain KKL cable may never reach them. See
+# research/cluster-and-service-reset.md §2.0.
+ADS_SUSPECTS = {"IKE", "ABS", "EWS"}
+
+
 @app.command()
 def scan(ctx: typer.Context) -> None:
-    """Probe known E36 module addresses; list responders."""
+    """Probe known E36 module addresses (read-only idents); list responders.
+
+    Sends only the harmless ident request (cmd 0x00) to each address — never
+    fault-clear or write jobs to non-DME modules.
+    """
     cfg: Config = ctx.obj
     probe = ds2.Timing(deadline=0.15, retries=0)
-    table = Table(title="DS2 bus scan")
+    table = Table(
+        title="DS2 bus scan",
+        caption="idents from modules other than the DME are unverified on this car",
+    )
     table.add_column("Module")
     table.add_column("Addr")
     table.add_column("Response")
+    table.add_column("Ident bytes", overflow="fold")
     found = 0
     with make_client(cfg) as client:
         for name, addr in sorted(ds2.ADDR.items(), key=lambda kv: kv[1]):
             try:
                 resp = client.query(addr, b"\x00", timing=probe)
-                table.add_row(name, f"0x{addr:02X}", f"ok ({len(resp.data)}B ident)")
+                shown = ds2.hexstr(resp.data[:32]) + ("…" if len(resp.data) > 32 else "")
+                table.add_row(name, f"0x{addr:02X}", f"ok ({len(resp.data)}B ident)", shown)
                 found += 1
             except ds2.NakResponse as exc:
-                table.add_row(name, f"0x{addr:02X}", f"answers ({exc.meaning})")
+                table.add_row(name, f"0x{addr:02X}", f"answers ({exc.meaning})", "")
                 found += 1
             except WIRE_ERRORS:
-                table.add_row(name, f"0x{addr:02X}", "[dim]silent[/dim]")
+                silent = (
+                    "no answer (may require ADS interface)"
+                    if name in ADS_SUSPECTS
+                    else "[dim]silent[/dim]"
+                )
+                table.add_row(name, f"0x{addr:02X}", silent, "")
     console.print(table)
     console.print(f"{found} module(s) responding")
 
@@ -373,6 +393,138 @@ def live_cmd(
     finally:
         if stats is not None:
             err_console.print(stats.summary())
+
+
+@app.command("panel")
+def panel_cmd(
+    ctx: typer.Context,
+    rate: float = typer.Option(10.0, "--rate", help="Max poll rate (Hz)."),
+    dtc_interval: float = typer.Option(
+        10.0, "--dtc-interval", help="Seconds between fault polls."
+    ),
+) -> None:
+    """Everything-dashboard: ident header, all params, state bits, faults.
+
+    Interactive keys: q quit, c clear DME fault memory (asks for an explicit
+    y confirmation in the panel first — it is a write to the ECU).
+    """
+    cfg: Config = ctx.obj
+    stats = live.TimingStats() if cfg.timing_debug else None
+    try:
+        with make_client(cfg) as client:
+            profile, ident = resolve_profile(cfg, client)
+            if ident is None:  # --profile override: still read the real ident
+                try:
+                    resp = client.query(ds2.ADDR["DME"], ms41.CMD_IDENT)
+                    ident = ms41.parse_ident(resp.data)
+                except WIRE_ERRORS:
+                    ident = None  # header just omits it
+            panelmod.run_panel(
+                client,
+                profile,
+                ident,
+                console,
+                rate=rate,
+                dtc_interval=dtc_interval,
+                stats=stats,
+            )
+    except live.LiveFatal as exc:
+        raise fail(str(exc)) from None
+    except WIRE_ERRORS as exc:
+        raise fail(str(exc)) from None
+    finally:
+        if stats is not None:
+            err_console.print(stats.summary())
+
+
+SIA_EPILOG = (
+    "Why no software reset? The E36 cluster does implement SIA_RESET at the "
+    "diagnostic-job level, but the raw DS2 request bytes are not public, the "
+    "adjacent command space includes GWSZ_RESET (odometer reset!), and Euro "
+    "E36 clusters typically need an ADS interface a KKL cable cannot emulate. "
+    "Sources and the full go/no-go: research/cluster-and-service-reset.md."
+)
+
+
+@app.command("sia", epilog=SIA_EPILOG)
+def sia_cmd(
+    kind: str = typer.Argument(
+        "oil", help="Which indicator to reset: 'oil' or 'inspection'."
+    ),
+    timer: bool = typer.Option(
+        False, "--timer", help="Run an on-screen countdown instead of flash counting."
+    ),
+) -> None:
+    """Guided service-interval (SIA) reset — the pin-7 grounding procedure.
+
+    This walkthrough sends NO wire traffic and needs no cable: the E36 service
+    lights are reset electrically at the round 20-pin connector. Count the LED
+    FLASHES (7 = oil service, 23 = inspection) rather than trusting a clock.
+    """
+    kind = kind.lower()
+    if kind not in ("oil", "inspection"):
+        raise fail("kind must be 'oil' or 'inspection'")
+    flashes = 7 if kind == "oil" else 23
+    seconds = 4.0 if kind == "oil" else 11.0
+
+    from rich.panel import Panel
+
+    console.print(
+        Panel(
+            "[bold]Use ONLY pin 7 and pin 19.[/bold]\n"
+            "Pin 7 = SIA reset input · pin 19 = ground.\n"
+            "Pin 14 and pin 16 carry +12 V — shorting them to ground can blow "
+            "fuses or damage the cluster. Do not guess pins: the numbers are "
+            "molded into the connector body.\n"
+            "A ~470 Ω resistor inline with the jumper wire is a sensible "
+            "precaution (bare wire is what most guides use).",
+            title="⚠ READ FIRST",
+            border_style="red",
+        )
+    )
+    steps = [
+        "Ignition OFF. Find the round 20-pin diagnostic connector in the "
+        "engine bay (near the strut tower / brake-fluid reservoir) and "
+        "unscrew its cap.",
+        "Turn the ignition to position II (dash lights on, engine NOT "
+        "running). The service-interval LEDs light up.",
+        f"Connect the jumper: into pin 7 first, then to pin 19 (ground). "
+        f"Hold it there and COUNT THE LED FLASHES: release after "
+        f"{flashes} flashes ({kind} reset, roughly {seconds:.0f} s).",
+        "Remove the jumper (the reset commits when you pull it), switch the "
+        "ignition off, then on again: the display should show 5 green bars "
+        "and the warning cleared.",
+    ]
+    for i, step in enumerate(steps, 1):
+        console.print(f"\n[bold cyan]Step {i}/4[/bold cyan]  {step}")
+        if i == 3 and timer:
+            _sia_countdown(seconds)
+        if i < len(steps) and not typer.confirm("Done?", default=True):
+            console.print("Stopped. Nothing was changed (this procedure is passive).")
+            raise typer.Exit(code=1)
+    console.print(f"\n[green]Done — {kind} service indicator should be reset.[/green]")
+    console.print(
+        "[dim]If the light is still on, repeat step 3 and rely on the flash "
+        "count, not the clock — the timing windows differ between sources.[/dim]"
+    )
+
+
+def _sia_countdown(seconds: float) -> None:
+    """Visible countdown as a backup pacing aid for --timer mode."""
+    from rich.progress import BarColumn, Progress, TextColumn
+
+    typer.confirm("Jumper connected — start the countdown?", default=True, abort=True)
+    with Progress(
+        TextColumn("holding…"), BarColumn(), TextColumn("{task.fields[left]:.1f}s"),
+        console=console,
+    ) as progress:
+        task = progress.add_task("hold", total=seconds, left=seconds)
+        t0 = time.monotonic()
+        while (elapsed := time.monotonic() - t0) < seconds:
+            progress.update(task, completed=elapsed, left=seconds - elapsed)
+            time.sleep(0.1)
+        progress.update(task, completed=seconds, left=0.0)
+    console.print("[bold green]Remove the jumper NOW.[/bold green]")
 
 
 @app.command("log")

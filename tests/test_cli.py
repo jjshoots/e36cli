@@ -43,6 +43,63 @@ def test_scan_lists_dme_as_responder():
     assert "1 module(s) responding" in result.output
 
 
+def test_scan_shows_ident_bytes_and_ads_note():
+    result = invoke("--sim", "scan")
+    assert result.exit_code == 0, result.output
+    # DME answers: raw ident bytes shown (sim ident starts with ASCII "1437806")
+    assert "31 34 33 37" in result.output.lower() or "31 34 33 37".upper() in result.output
+    # IKE/ABS/EWS stay silent on a KKL cable: neutral ADS note, not just "silent"
+    assert result.output.count("may require ADS") == 3
+    assert "unverified on this car" in result.output
+
+
+# --- sia (pure UI, no wire traffic) ------------------------------------------
+
+
+def test_sia_oil_walkthrough_renders_all_steps():
+    result = invoke("sia", "oil", input="y\ny\ny\n")
+    assert result.exit_code == 0, result.output
+    out = result.output
+    assert "pin 7" in out and "19" in out
+    assert "7 flashes" in out
+    assert "Step 1/4" in out and "Step 4/4" in out
+    assert "READ FIRST" in out
+    assert "+12 V" in out  # the wrong-pin warning
+
+
+def test_sia_inspection_uses_23_flashes():
+    result = invoke("sia", "inspection", input="y\ny\ny\n")
+    assert result.exit_code == 0, result.output
+    assert "23 flashes" in result.output
+
+
+def test_sia_rejects_unknown_kind():
+    result = invoke("sia", "brakes")
+    assert result.exit_code == 1
+
+
+def test_sia_abort_midway_is_clean():
+    result = invoke("sia", "oil", input="n\n")
+    assert result.exit_code == 1
+    assert "Nothing was changed" in result.output
+
+
+def test_sia_needs_no_port(tmp_path):
+    # Must work with a nonexistent port and never open a transport.
+    result = invoke("--port", str(tmp_path / "nope"), "sia", "oil", input="y\ny\ny\n")
+    assert result.exit_code == 0, result.output
+
+
+# --- panel (interactive; loop covered component-level in test_panel.py) ------
+
+
+def test_panel_help_documents_keys_and_guarded_write():
+    result = invoke("panel", "--help")
+    assert result.exit_code == 0
+    assert "q quit" in result.output or "q" in result.output
+    assert "clear" in result.output.lower()
+
+
 def test_dtc_read_empty():
     result = invoke("--sim", "dtc", "read")
     assert result.exit_code == 0, result.output

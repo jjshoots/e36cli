@@ -116,6 +116,8 @@ class LiveStore:
         self.faults_ts: float | None = None
         self.faults_error: str | None = None
         self.faults_error_ts: float | None = None
+        # Outcome of the last panel-initiated DTC clear: (message, ok).
+        self.clear_result: tuple[str, bool] | None = None
 
     def update(self, values: dict[str, ms41.Value]) -> None:
         now = time.monotonic()
@@ -143,6 +145,14 @@ class LiveStore:
             self.hours_now = hours_now
             self.faults_ts = time.monotonic()
             self.faults_error = None
+
+    def set_clear_result(self, msg: str, ok: bool) -> None:
+        with self._lock:
+            self.clear_result = (msg, ok)
+
+    def clear_snapshot(self) -> tuple[str, bool] | None:
+        with self._lock:
+            return self.clear_result
 
     def set_faults_error(self, msg: str) -> None:
         with self._lock:
@@ -187,6 +197,8 @@ class Poller(threading.Thread):
         self.dtc_interval = dtc_interval
         self.clock = clock
         self._next_dtc = 0.0  # 0 = fetch on the first loop iteration
+        # Panel 'c' key: the WRITE must happen on this thread (single wire).
+        self._clear_requested = threading.Event()
 
     def run(self) -> None:
         consecutive = 0
@@ -207,6 +219,9 @@ class Poller(threading.Thread):
             else:
                 consecutive = 0
                 self.store.update(values)
+            if self._clear_requested.is_set():
+                self._clear_requested.clear()
+                self._do_clear()
             if self.dtc_interval > 0 and self.clock() >= self._next_dtc:
                 self._poll_faults()
             leftover = self.min_period - (time.monotonic() - start)
@@ -225,6 +240,22 @@ class Poller(threading.Thread):
         else:
             self.store.update_faults(faults, hours_now)
         self._next_dtc = self.clock() + self.dtc_interval
+
+    def request_clear(self) -> None:
+        """Ask the poller thread to clear the DME fault memory (guarded write).
+
+        Callers (the panel) must have confirmed with the user already.
+        """
+        self._clear_requested.set()
+
+    def _do_clear(self) -> None:
+        try:
+            self.client.query(ds2.ADDR["DME"], ms41.CMD_DTC_CLEAR, timing=ds2.CLEAR)
+        except (ds2.DS2Error, TransportError) as exc:
+            self.store.set_clear_result(f"clear failed: {exc}", ok=False)
+        else:
+            self.store.set_clear_result("fault memory cleared", ok=True)
+        self._poll_faults()  # re-read immediately so the panel shows the result
 
     def _die(self, msg: str) -> None:
         self.fatal = msg

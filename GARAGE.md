@@ -30,7 +30,20 @@ record and continue. Everything is auto-captured to
 6. `e36 live` at idle: RPM ~700–800, battery ~13.8–14.2 V (alternator),
    coolant rising. Blip throttle: RPM + TPS + MAF must move together.
 7. `e36 log idle-warmup.csv` for a few minutes of warmup.
-8. `--timing-debug` on: record achieved poll rate (target ≥ 10 Hz).
+8. `--timing-debug` on: record achieved poll rate (target ≥ 2.5 Hz core).
+
+## Session 3 — new features to validate on the car
+
+9. `e36 scan` (ignition on): do IKE 0x80 / ABS 0x56 / EWS 0x44 answer their
+   harmless ident probes on this KKL cable, or is the "needs ADS" story true?
+   Record the raw ident bytes either way.
+10. `e36 panel` on the running engine: full param set + state-bits line
+    (throttle closed should toggle with pedal; decel fuel cut on a rev
+    release), faults panel updates, `c`→`y` clear flow IF the owner wants the
+    codes cleared (expect 217 to re-store; 25 to re-store until the B1 sensor
+    is fixed).
+11. Drive test: watch LTFT/additive B2 move (confirms the x/4096 scaling
+    hypothesis) → promote trim scalings if confirmed.
 
 ## Session log
 

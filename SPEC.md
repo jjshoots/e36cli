@@ -13,8 +13,11 @@ spec in the same change.
    session capture file (JSONL, timestamped) under `~/.local/share/e36cli/captures/`.
    No flag disables this. Captures are the seed corpus for the simulator.
 2. **Reads are free, writes are guarded.** Commands that modify ECU state
-   (`dtc clear`, future activations/adaptation resets) require `--yes` or an
-   interactive confirmation. Component activation must refuse if engine RPM > 0.
+   (`dtc clear`, the panel's `c` key, future activations/adaptation resets)
+   require `--yes` or an interactive confirmation. Component activation must
+   refuse if engine RPM > 0. Non-DME modules are strictly read-only (ident
+   probes only) — never clear/write to IKE/ABS/EWS; the cluster command space
+   contains an odometer reset (research/cluster-and-service-reset.md §1c).
 3. **Provenance on every constant.** Every RAM offset, scaling factor, command
    byte, and DTC text in profile data carries `source` and `verified` fields.
    Unverified parameters render with a `?` marker in all output.
@@ -77,7 +80,9 @@ core = true               # optional: dashboard-core subset (live/log default)
 |---|---|---|
 | `e36 doctor` | Check port presence, permissions (dialout), FTDI latency timer, udev hints | no |
 | `e36 ident` | Read + parse DME identification, show matched profile | no |
-| `e36 scan` | Probe known E36 module addresses, list responders | no |
+| `e36 scan` | Probe known module addresses (ident only, read-only); shows raw ident bytes; silent IKE/ABS/EWS noted as "may require ADS interface" | no |
+| `e36 panel` | Everything-dashboard: ident header, all params, decoded state bits, faults; keys: `q` quit, `c` clear faults (in-TUI `y` confirmation — guarded write on the poller thread) | **c key** |
+| `e36 sia` | Guided pin-7→pin-19 service-interval reset walkthrough (oil/inspection; count LED flashes, 7/23; `--timer` countdown). Software cluster reset is a researched NO-GO: see research/cluster-and-service-reset.md | no (no wire traffic) |
 | `e36 dtc read` | Read + decode fault codes | no |
 | `e36 dtc clear` | Clear fault codes | **yes** |
 | `e36 live` | Rich live dashboard (core param set by default; `--all`, `--params a,b`, `--rate`) plus a stored-faults panel (polled every `--dtc-interval` s, default 10; `--no-dtc` hides) | no |

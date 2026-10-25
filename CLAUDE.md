@@ -82,3 +82,16 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   the FTDI drops off USB under sustained traffic (burst sessions fixed it —
   suspect cable); 0xF880+ is calibration tables w/ 0x100-periodic mirror;
   flush_input termios.error escape fixed + regression test (186 tests).
+- 2026-10-25 (late night): **`e36 panel` + `e36 sia` shipped** (204 tests).
+  Panel = ident header, all params, decoded state bits (only the documented
+  bits of 0xFD24/0xFD14 — "closed throttle" is INVERTED bit 0), faults, keys
+  q/c; the `c` clear runs on the Poller thread via `request_clear()` after an
+  in-TUI `y` confirm. SIA reset over DS2 is a researched **NO-GO**
+  (research/cluster-and-service-reset.md: opcode unpublished; GWSZ_RESET =
+  odometer reset sits in the same command space; Euro E36 cluster likely needs
+  ADS, not KKL) — `e36 sia` is a guided pin-7→pin-19 walkthrough instead,
+  zero wire traffic, flash counts (7 oil / 23 inspection) over stopwatch.
+  `e36 scan` now shows raw ident bytes and labels silent IKE/ABS/EWS with
+  "may require ADS interface". HARD RULE now in SPEC: never write to non-DME
+  modules. NOT yet validated on the car: panel on a running engine, scan
+  module idents (0x80/0x56/0x44 harmless ident probes).
