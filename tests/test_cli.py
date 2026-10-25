@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+from pathlib import Path
 
 import pytest
 from typer.testing import CliRunner
@@ -95,6 +96,57 @@ def test_live_unknown_param_errors_cleanly():
     assert result.exit_code == 1
     assert "unknown param" in result.output
     assert "Traceback" not in result.output
+
+
+def test_live_json_includes_faults_by_default(monkeypatch):
+    monkeypatch.setenv("E36CLI_SIM_DTCS", "100,214")
+    result = invoke("--sim", "live", "--json")
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.stdout)
+    assert [f["code"] for f in doc["faults"]] == [100, 214]
+    assert all(f["present"] for f in doc["faults"])  # sim default status 0x60
+    assert all(f["age_h"] is not None for f in doc["faults"])
+
+
+def test_live_json_faults_empty_when_memory_clean():
+    result = invoke("--sim", "live", "--json")
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["faults"] == []
+
+
+def test_live_no_dtc_omits_faults(monkeypatch):
+    monkeypatch.setenv("E36CLI_SIM_DTCS", "100")
+    result = invoke("--sim", "live", "--json", "--no-dtc")
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.stdout)
+    assert "faults" not in doc and "faults_error" not in doc
+
+
+def test_live_once_table_shows_faults(monkeypatch):
+    monkeypatch.setenv("E36CLI_SIM_DTCS", "100")
+    result = invoke("--sim", "live", "--once")
+    assert result.exit_code == 0, result.output
+    assert "stored fault(s)" in result.output
+    assert "100" in result.output
+    # --no-dtc: params only
+    result = invoke("--sim", "live", "--once", "--no-dtc")
+    assert result.exit_code == 0, result.output
+    assert "stored fault" not in result.output
+
+
+def test_live_once_fault_read_failure_is_nonfatal():
+    # The real-car capture has no DTC exchange: replay serves silence for the
+    # fault read, which must NOT break the snapshot (explicit SPEC behavior).
+    fixture = Path(__file__).parent / "fixtures" / "car-live-once.jsonl"
+    result = invoke("--sim-fixture", str(fixture), "live", "--once")
+    assert result.exit_code == 0, result.output
+    assert "Engine RPM" in result.output
+    assert "faults: read failed" in result.output
+    result = invoke("--sim-fixture", str(fixture), "live", "--json")
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.stdout)
+    assert "faults_error" in doc and "faults" not in doc
+    assert doc["params"]  # params decoded fine regardless
 
 
 def test_timing_debug_reports_rate_to_stderr():

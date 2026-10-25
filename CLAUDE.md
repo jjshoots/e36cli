@@ -59,3 +59,13 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   coherence, log warmup, measure real poll rate); find 1429373 trim/battery
   addresses (RomRaider login-gated sheet? firmware dump?); then the 0x0B
   batch telegram for 10+ Hz.
+- 2026-10-25 (later still): owner ran the throttle-blip check with `e36 live`
+  on the running engine — RPM/TPS/MAF moved together ✓ (session-2 item done).
+  `e36 live` now also shows a stored-faults panel: DTC reads interleaved on
+  the poller thread every 10 s (`--dtc-interval`, `--no-dtc`), always
+  non-fatal; `--once`/`--json` include faults too (`faults` array /
+  `faults_error`). Wire cost ≈ 65 B per fault poll → < 1% of the budget.
+  Car context worth remembering: no catalytic converters (decat + Euro MS41.0
+  swap explains the ECU identity); fault 217 (EGS CAN) is likely an artifact
+  of the auto-donor ECU in (probably) a manual car — it will re-store after
+  every clear.

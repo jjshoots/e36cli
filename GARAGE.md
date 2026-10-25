@@ -40,8 +40,11 @@ record and continue. Everything is auto-captured to
   physically plausible → promoted verified). Goldens in tests/fixtures/.
   Gotcha hit: running `e36 live` in a second window while another e36 command
   runs kills both — single-master wire; port is now opened exclusively.
-  Still pending from session 2 list: throttle-blip coherence check, warmup
-  log, measured poll rate (step 8 target is now ≥ 2.5 Hz core, not 10 Hz).
+  Still pending from session 2 list: warmup log, measured poll rate (step 8
+  target is now ≥ 2.5 Hz core, not 10 Hz).
+- **Session 2 (partial) — 2026-10-25, engine running:** throttle-blip
+  coherence check DONE by the owner via `e36 live` — RPM, TPS and MAF moved
+  together on blips, confirming decode coherence beyond static plausibility.
 
 ## After any session
 

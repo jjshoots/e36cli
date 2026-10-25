@@ -16,7 +16,9 @@ from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
 
+from . import ds2, ms41
 from .ms41 import data_dir
+from .transport import TransportError
 
 STORED_RECORD_SIZE = 10
 
@@ -163,6 +165,38 @@ def decode_dtc_response(data: bytes) -> list[Dtc]:
             )
         )
     return out
+
+
+def fetch_faults(
+    client: "ds2.DS2Client", timing: "ds2.Timing | None" = None, with_hours: bool = True
+) -> tuple[list[Dtc], float | None]:
+    """Read + decode stored faults over an open client (single-master wire:
+    callers own the transport). Returns (faults, current hours counter or None).
+
+    Tries CMD_DTC_READ, falling back to the bare form on NAK (research §4).
+    The hours counter is best-effort: its prepare command may answer busy.
+    """
+    t = timing if timing is not None else ds2.SLOW
+    try:
+        resp = client.query(ds2.ADDR["DME"], ms41.CMD_DTC_READ, timing=t)
+    except ds2.NakResponse:
+        resp = client.query(ds2.ADDR["DME"], ms41.CMD_DTC_READ_BARE, timing=t)
+    faults = decode_dtc_response(resp.data)
+    hours_now: float | None = None
+    if with_hours and any(f.hours_raw is not None for f in faults):
+        try:
+            prep = client.query(ds2.ADDR["DME"], ms41.CMD_DTC_PREPARE, timing=t)
+            hours_now = decode_hours_counter(prep.data)
+        except (ds2.DS2Error, TransportError):
+            hours_now = None  # fault ages are a bonus, not a requirement
+    return faults, hours_now
+
+
+def age_hours(f: Dtc, hours_now: float | None) -> float | None:
+    """Fault age in hours given the current counter from fetch_faults()."""
+    if hours_now is None:
+        return None
+    return f.hours_ago(round(hours_now / 0.1))
 
 
 def decode_hours_counter(data: bytes) -> float | None:

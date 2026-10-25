@@ -10,12 +10,15 @@ from __future__ import annotations
 import threading
 import time
 from dataclasses import dataclass, field
+from typing import Callable
 
-from rich.console import Console
+from rich.console import Console, Group, RenderableType
 from rich.live import Live
 from rich.table import Table
+from rich.text import Text
 
 from . import ds2, ms41
+from . import dtc as dtcmod
 from .transport import TransportError
 
 # Profile params are scattered across ~9 KB of RAM; bridging gaps up to this
@@ -107,6 +110,12 @@ class LiveStore:
         self._values: dict[str, tuple[ms41.Value, float]] = {}
         self.error: str | None = None
         self.fatal: str | None = None
+        # Faults: None = never fetched; [] = fetched, memory is clean.
+        self.faults: list[dtcmod.Dtc] | None = None
+        self.hours_now: float | None = None
+        self.faults_ts: float | None = None
+        self.faults_error: str | None = None
+        self.faults_error_ts: float | None = None
 
     def update(self, values: dict[str, ms41.Value]) -> None:
         now = time.monotonic()
@@ -128,6 +137,25 @@ class LiveStore:
         with self._lock:
             return dict(self._values), self.error
 
+    def update_faults(self, faults: list[dtcmod.Dtc], hours_now: float | None) -> None:
+        with self._lock:
+            self.faults = list(faults)
+            self.hours_now = hours_now
+            self.faults_ts = time.monotonic()
+            self.faults_error = None
+
+    def set_faults_error(self, msg: str) -> None:
+        with self._lock:
+            self.faults_error = msg
+            self.faults_error_ts = time.monotonic()
+
+    def faults_snapshot(
+        self,
+    ) -> tuple[list[dtcmod.Dtc] | None, float | None, float | None, str | None, float | None]:
+        with self._lock:
+            faults = None if self.faults is None else list(self.faults)
+            return faults, self.hours_now, self.faults_ts, self.faults_error, self.faults_error_ts
+
 
 class Poller(threading.Thread):
     """Polls as fast as the wire allows (capped by `rate`), owns the transport."""
@@ -141,6 +169,8 @@ class Poller(threading.Thread):
         stats: TimingStats | None = None,
         names: list[str] | None = None,
         max_failures: int = MAX_CONSECUTIVE_FAILURES,
+        dtc_interval: float = 0.0,
+        clock: Callable[[], float] = time.monotonic,
     ) -> None:
         super().__init__(daemon=True)
         self.client = client
@@ -152,6 +182,11 @@ class Poller(threading.Thread):
         self.max_failures = max_failures
         self.fatal: str | None = None
         self._plan = plan(profile, names=names)
+        # Faults are read on the SAME thread/client between param polls —
+        # the K-line is single-master, never open a second connection.
+        self.dtc_interval = dtc_interval
+        self.clock = clock
+        self._next_dtc = 0.0  # 0 = fetch on the first loop iteration
 
     def run(self) -> None:
         consecutive = 0
@@ -172,9 +207,24 @@ class Poller(threading.Thread):
             else:
                 consecutive = 0
                 self.store.update(values)
+            if self.dtc_interval > 0 and self.clock() >= self._next_dtc:
+                self._poll_faults()
             leftover = self.min_period - (time.monotonic() - start)
             if leftover > 0:
                 self.stop_event.wait(leftover)
+
+    def _poll_faults(self) -> None:
+        """Interleaved DTC read; failures are transient (keep last-known list)."""
+        try:
+            faults, hours_now = dtcmod.fetch_faults(self.client)
+        except (ds2.DS2Error, TransportError, dtcmod.DtcError) as exc:
+            self.store.set_faults_error(str(exc))
+        except Exception as exc:  # decode/programming error: same policy as params
+            self._die(f"fault poll crashed: {exc!r}")
+            self.stop_event.set()
+        else:
+            self.store.update_faults(faults, hours_now)
+        self._next_dtc = self.clock() + self.dtc_interval
 
     def _die(self, msg: str) -> None:
         self.fatal = msg
@@ -217,6 +267,60 @@ def format_value(v: ms41.Value) -> str:
     return num if v.verified else f"{num} ?"
 
 
+def faults_table(faults: list[dtcmod.Dtc], hours_now: float | None) -> Table:
+    """Compact fault list: present faults red, stored-only dim."""
+    table = Table(title=f"{len(faults)} stored fault(s)", title_style="bold")
+    table.add_column("Code", justify="right")
+    table.add_column("Description")
+    table.add_column("Freq", justify="right")
+    if hours_now is not None:
+        table.add_column("Age (h)", justify="right")
+    for f in faults:
+        row = [
+            str(f.code),
+            f.description if f.verified else f"{f.description} ?",
+            "" if f.frequency is None else str(f.frequency),
+        ]
+        if hours_now is not None:
+            age = dtcmod.age_hours(f, hours_now)
+            row.append("" if age is None else f"{age:.1f}")
+        table.add_row(*row, style="red" if f.present else "dim")
+    return table
+
+
+def render_faults(store: LiveStore, interval: float) -> RenderableType:
+    faults, hours_now, ts, error, error_ts = store.faults_snapshot()
+    now = time.monotonic()
+    notes: list[str] = []
+    if error is not None:
+        ago = f" {now - error_ts:.0f}s ago" if error_ts is not None else ""
+        notes.append(f"faults: read failed{ago} ({error})")
+    if ts is not None and interval > 0 and now - ts > 2 * interval:
+        notes.append(f"faults last updated {now - ts:.0f}s ago")
+    note_text = Text("; ".join(notes), style="yellow") if notes else None
+
+    if faults is None:
+        body: RenderableType = note_text or Text("faults: reading…", style="dim")
+        return body
+    if not faults:
+        body = Text("No stored faults", style="green")
+    else:
+        body = faults_table(faults, hours_now)
+    return Group(body, note_text) if note_text else body
+
+
+def render_dashboard(
+    profile: ms41.Profile,
+    store: LiveStore,
+    names: list[str] | None = None,
+    dtc_interval: float = 0.0,
+) -> RenderableType:
+    table = render_table(profile, store, names)
+    if dtc_interval <= 0:
+        return table
+    return Group(table, render_faults(store, dtc_interval))
+
+
 def run_dashboard(
     client: ds2.DS2Client,
     profile: ms41.Profile,
@@ -224,23 +328,29 @@ def run_dashboard(
     rate: float = 10.0,
     stats: TimingStats | None = None,
     names: list[str] | None = None,
+    dtc_interval: float = 10.0,
 ) -> None:
     """Dashboard until Ctrl-C. Render ~8 fps, decoupled from the poller.
 
-    Raises LiveFatal if the poller gives up (persistent wire failure or a
-    programming error) so the CLI exits non-zero instead of showing a frozen
-    table forever.
+    Faults are polled every `dtc_interval` seconds on the poller thread
+    (0 disables). Raises LiveFatal if the poller gives up (persistent wire
+    failure or a programming error) so the CLI exits non-zero instead of
+    showing a frozen table forever.
     """
     store = LiveStore()
-    poller = Poller(client, profile, store, rate=rate, stats=stats, names=names)
+    poller = Poller(
+        client, profile, store, rate=rate, stats=stats, names=names, dtc_interval=dtc_interval
+    )
     poller.start()
     try:
         with Live(
-            render_table(profile, store, names), console=console, refresh_per_second=8
+            render_dashboard(profile, store, names, dtc_interval),
+            console=console,
+            refresh_per_second=8,
         ) as view:
             while poller.is_alive():
                 time.sleep(0.125)
-                view.update(render_table(profile, store, names))
+                view.update(render_dashboard(profile, store, names, dtc_interval))
     except KeyboardInterrupt:
         return
     finally:

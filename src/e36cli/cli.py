@@ -214,20 +214,9 @@ def scan(ctx: typer.Context) -> None:
 def dtc_read(ctx: typer.Context) -> None:
     """Read and decode stored fault codes."""
     cfg: Config = ctx.obj
-    hours_now: float | None = None
     try:
         with make_client(cfg) as client:
-            try:
-                resp = client.query(ds2.ADDR["DME"], ms41.CMD_DTC_READ, timing=ds2.SLOW)
-            except ds2.NakResponse:  # some variants want the bare form (research §4)
-                resp = client.query(ds2.ADDR["DME"], ms41.CMD_DTC_READ_BARE, timing=ds2.SLOW)
-            faults = dtcmod.decode_dtc_response(resp.data)
-            if faults and any(f.hours_raw is not None for f in faults):
-                try:  # prepare command returns the current operating-hours counter
-                    prep = client.query(ds2.ADDR["DME"], ms41.CMD_DTC_PREPARE, timing=ds2.SLOW)
-                    hours_now = dtcmod.decode_hours_counter(prep.data)
-                except WIRE_ERRORS:
-                    hours_now = None  # fault ages are a bonus, not a requirement
+            faults, hours_now = dtcmod.fetch_faults(client)
     except WIRE_ERRORS as exc:
         raise fail(str(exc)) from None
     if not faults:
@@ -252,7 +241,7 @@ def dtc_read(ctx: typer.Context) -> None:
             "" if f.frequency is None else str(f.frequency),
         ]
         if hours_now is not None:
-            age = f.hours_ago(round(hours_now / 0.1))
+            age = dtcmod.age_hours(f, hours_now)
             row.append("" if age is None else f"{age:.1f}")
         row.append(", ".join(f.flags))
         table.add_row(*row)
@@ -285,11 +274,19 @@ def live_cmd(
     rate: float = typer.Option(10.0, "--rate", help="Max poll rate (Hz)."),
     all_params: bool = typer.Option(False, "--all", help="Every profile param (default: core set)."),
     params: Optional[str] = typer.Option(None, "--params", help="Comma-separated param names."),
+    dtc_on: bool = typer.Option(
+        True, "--dtc/--no-dtc", help="Also show stored faults (polled between live reads)."
+    ),
+    dtc_interval: float = typer.Option(
+        10.0, "--dtc-interval", help="Seconds between fault polls in the dashboard."
+    ),
 ) -> None:
     """Live dashboard of the core parameter set (default), or one snapshot.
 
     Defaults to the profile's dashboard-core subset for a usable refresh rate
     on the 9600-baud wire; --all reads everything, --params picks names.
+    Stored faults are shown too (--no-dtc to skip); a failed fault read is
+    never fatal — params still render.
     """
     cfg: Config = ctx.obj
     stats = live.TimingStats() if cfg.timing_debug else None
@@ -300,6 +297,14 @@ def live_cmd(
             if once or json_out:
                 reads = live.plan(profile, names=names)
                 values = live.poll_once(client, profile, reads, stats=stats)
+                faults: list[dtcmod.Dtc] | None = None
+                hours_now: float | None = None
+                faults_error: str | None = None
+                if dtc_on:
+                    try:
+                        faults, hours_now = dtcmod.fetch_faults(client)
+                    except WIRE_ERRORS as exc:
+                        faults_error = str(exc)  # non-fatal: params still print
                 if json_out:
                     doc = {
                         "profile": profile.id,
@@ -313,6 +318,22 @@ def live_cmd(
                             for v in values.values()
                         },
                     }
+                    if dtc_on:
+                        if faults_error is not None:
+                            doc["faults_error"] = faults_error
+                        else:
+                            doc["faults"] = [
+                                {
+                                    "code": f.code,
+                                    "description": f.description,
+                                    "system": f.system,
+                                    "present": f.present,
+                                    "frequency": f.frequency,
+                                    "age_h": dtcmod.age_hours(f, hours_now),
+                                    "verified": f.verified,
+                                }
+                                for f in faults
+                            ]
                     console.print_json(json.dumps(doc))
                 else:
                     table = Table(
@@ -326,8 +347,23 @@ def live_cmd(
                         if v is not None:
                             table.add_row(spec.label, live.format_value(v), v.unit)
                     console.print(table)
+                    if dtc_on:
+                        if faults_error is not None:
+                            err_console.print(f"[yellow]faults: read failed ({faults_error})[/yellow]")
+                        elif not faults:
+                            console.print("[green]No stored faults[/green]")
+                        else:
+                            console.print(live.faults_table(faults, hours_now))
             else:
-                live.run_dashboard(client, profile, console, rate=rate, stats=stats, names=names)
+                live.run_dashboard(
+                    client,
+                    profile,
+                    console,
+                    rate=rate,
+                    stats=stats,
+                    names=names,
+                    dtc_interval=dtc_interval if dtc_on else 0.0,
+                )
     except live.LiveFatal as exc:
         raise fail(str(exc)) from None
     except KeyError as exc:

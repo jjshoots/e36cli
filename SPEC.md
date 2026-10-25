@@ -80,8 +80,8 @@ core = true               # optional: dashboard-core subset (live/log default)
 | `e36 scan` | Probe known E36 module addresses, list responders | no |
 | `e36 dtc read` | Read + decode fault codes | no |
 | `e36 dtc clear` | Clear fault codes | **yes** |
-| `e36 live` | Rich live dashboard (core param set by default; `--all`, `--params a,b`, `--rate`) | no |
-| `e36 live --once` / `--json` | Single snapshot, human or JSON | no |
+| `e36 live` | Rich live dashboard (core param set by default; `--all`, `--params a,b`, `--rate`) plus a stored-faults panel (polled every `--dtc-interval` s, default 10; `--no-dtc` hides) | no |
+| `e36 live --once` / `--json` | Single snapshot, human or JSON; includes faults (`--no-dtc` skips; JSON gets a `faults` array, or `faults_error` on a failed read) | no |
 | `e36 log OUT.csv` | Stream samples to CSV/JSONL until Ctrl-C (same selection flags; unverified params marked in headers/fields) | no |
 | `e36 raw HEX...` | Send arbitrary frame, print hex response (the probe tool) | caution |
 | `e36 captures` | List/show capture sessions | no |
@@ -95,7 +95,11 @@ Env hooks: `E36CLI_CAPTURE_DIR`, `E36CLI_SIM_DTCS` (seed sim fault codes).
 Failure policy: the live poller treats wire errors as transient (keeps polling,
 gives up after 10 consecutive failed polls) and any other exception as fatal
 immediately; either way the dashboard exits non-zero with a one-line message.
-Transports are closed on every CLI exit path (capture files flush per event).
+Fault polls are interleaved on the SAME poller thread/client (single-master
+wire) and are always non-fatal: a failed DTC read keeps the last-known fault
+list with a "read failed" note, and in `--once`/`--json` the params still
+render. Transports are closed on every CLI exit path (capture files flush per
+event).
 
 ## Performance targets
 
