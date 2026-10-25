@@ -141,3 +141,27 @@ def test_set_ftdi_latency_already_set(tmp_path, monkeypatch):
     )
     res = set_ftdi_latency("/dev/ttyUSB0")
     assert res.ok and res.before_ms == 1
+
+
+def test_flush_input_wraps_non_oserror_as_transport_error():
+    """termios.error (not an OSError) must not escape flush_input (seen live
+    when the USB device vanished mid-session, research/1429373-probe.md)."""
+    import pytest
+
+    from e36cli.transport import SerialTransport, TransportError
+
+    class TermiosLikeError(Exception):
+        pass
+
+    class FakeSer:
+        timeout = 0.1
+
+        def reset_input_buffer(self):
+            raise TermiosLikeError(5, "Input/output error")
+
+        def close(self):
+            pass
+
+    tr = SerialTransport("/dev/fake", ser=FakeSer())
+    with pytest.raises(TransportError):
+        tr.flush_input()

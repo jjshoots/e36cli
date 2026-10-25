@@ -2,15 +2,20 @@
 # SW index 59 => MS41.0 per research/ms41-data.md §1.3; ident captured in
 # tests/fixtures/car-ident.jsonl on 2026-10-25).
 #
-# Params: the §3.6.1 common set only. The BimmerStein logger XML has NO 1429373
-# column in the per-variant table (§3.6.2), so these variant-specific params are
-# OMITTED rather than borrowed from another variant: injector_pw, stft/ltft,
-# additive trims, load, battery, O2 heater duties, runtime cut, launch speed.
+# Params: the §3.6.1 common set, PLUS variant-specific addresses established by
+# the 2026-10-25 live RAM probe of this exact car (research/1429373-probe.md):
+# 3 full window sweeps + 20-round re-read validation at warm idle. Headline:
+# 1429373 uses the SAME trim-block addresses as 1429861 (the sibling Euro
+# MS41.0), confirmed by a bank-asymmetry fingerprint (STFT B1 frozen at exactly
+# 0.00% — dead B1 O2 sensor, open loop — while STFT B2 actively regulated
+# −2…−6%). Battery is at 1429861's address −2 (0xFB45). Documented *scalings*
+# for LTFT/additive do NOT match this ECU; hypotheses are noted per-param.
+# Still not found: runtime cut, launch speed, O2 heater duties.
 # (Knock-adaptation *calibration* axes for 1429373 exist at 0x12144/0x12117 —
 # calibration-side, not live params.) tps (0xE8D0) is address-invariant across
-# every documented variant and read plausibly on this car, so it is included.
+# every documented variant and read plausibly on this car.
 #
-# Dashboard core = the same 8 params as ms41-generic (trims/battery unavailable).
+# Dashboard core = the generic 8 + stft_b1/b2 + battery (matches ms41.1 core).
 [profile]
 id = "ms41.0-1429373"
 description = "MS41.0 (Euro M52) — ECU ID 1429373"
@@ -241,3 +246,133 @@ formula = "x"
 source = "BimmerStein logger XML (bit1=start, bit3=part load, bit5=decel cut); research §3.6.1"
 verified = false
 
+
+# --- variant-specific, established by live RAM probe 2026-10-25 ---
+# (research/1429373-probe.md; raw data research/data/1429373-*.json)
+
+[[param]]
+name = "inj_pw"
+label = "Injector PW"
+unit = "ms"
+addr = 0xECBC
+size = 2
+formula = "x * 0.00534"
+source = "live RAM probe 2026-10-25 (= 1429861 addr); 2.67-2.78 ms at warm idle, 8/8 rounds"
+verified = false
+
+[[param]]
+name = "stft_b1"
+core = true
+label = "Short trim B1"
+unit = "%"
+addr = 0xED5C
+size = 2
+formula = "(x - 32768) * 100 / 65535"
+source = "live RAM probe 2026-10-25 (= 1429861 addr); frozen at exactly 0.00% = bank 1 open loop (dead B1 sensor), diagnostic fingerprint"
+verified = false
+
+[[param]]
+name = "stft_b2"
+core = true
+label = "Short trim B2"
+unit = "%"
+addr = 0xED96
+size = 2
+formula = "(x - 32768) * 100 / 65535"
+source = "live RAM probe 2026-10-25 (= 1429861 addr); actively regulating -2.25..-5.9% at idle, every sample distinct"
+verified = false
+
+# LTFT: addresses behave correctly (B1 static at raw 4321 with lambda B1 dead;
+# B2 slowly adapting 4394-4525) but the DOCUMENTED (x-32768) scaling is wrong
+# for this ECU (gives -43%). Scaling below is the x/4096-as-factor hypothesis
+# (raw 4321 -> +5.5%); LOW confidence on scaling, HIGH on address.
+[[param]]
+name = "ltft_b1"
+label = "Long trim B1"
+unit = "%"
+addr = 0xED6E
+size = 2
+formula = "x * 0.0244140625 - 100"
+source = "live RAM probe 2026-10-25; addr = 1429861, scaling hypothesis x/4096 factor"
+verified = false
+
+[[param]]
+name = "ltft_b2"
+label = "Long trim B2"
+unit = "%"
+addr = 0xEDA8
+size = 2
+formula = "x * 0.0244140625 - 100"
+source = "live RAM probe 2026-10-25; addr = 1429861, scaling hypothesis x/4096 factor"
+verified = false
+
+# Additive trims: B1 frozen at raw 0 (open loop), B2 live at raw 66-75. The
+# documented 0x8000-midpoint scaling is wrong here; treating raw as unsigned
+# x0.00534 ms (B2 ~ +0.36 ms). LOW confidence scaling, HIGH address.
+[[param]]
+name = "add_b1"
+label = "Additive trim B1"
+unit = "ms"
+addr = 0xED66
+size = 2
+formula = "x * 0.00534"
+source = "live RAM probe 2026-10-25; addr = 1429861, scaling hypothesis unsigned ms"
+verified = false
+
+[[param]]
+name = "add_b2"
+label = "Additive trim B2"
+unit = "ms"
+addr = 0xEDA0
+size = 2
+formula = "x * 0.00534"
+source = "live RAM probe 2026-10-25; addr = 1429861, scaling hypothesis unsigned ms"
+verified = false
+
+# Lambda status bytes: constant 0x02 (B1, open loop) / 0x01 (B2, closed loop)
+# through all rounds. Hypothesis: bit0 = closed-loop active (doc says bit3 on
+# other variants — does not match here). Raw bits exposed.
+[[param]]
+name = "lambda_bits_b1"
+label = "Lambda status B1"
+unit = "bits"
+addr = 0xED58
+size = 1
+formula = "x"
+source = "live RAM probe 2026-10-25; addr = 1429861 lambda-active byte"
+verified = false
+
+[[param]]
+name = "lambda_bits_b2"
+label = "Lambda status B2"
+unit = "bits"
+addr = 0xED92
+size = 1
+formula = "x"
+source = "live RAM probe 2026-10-25; addr = 1429861 lambda-active byte"
+verified = false
+
+[[param]]
+name = "load"
+label = "Engine load"
+unit = "mg/stroke"
+addr = 0xFAFC
+size = 2
+formula = "x * 0.021195"
+source = "live RAM probe 2026-10-25 (= 1429861 addr); raw 51-54 stable at idle; scaling per doc, plausibility of units uncertain"
+verified = false
+
+# Battery: 1429861 documents 0xFB47; on this ECU the tracking byte is 0xFB45
+# (doc addr - 2). Read 13.97-14.38 V with alternator ripple across 15 samples
+# at running idle; 0xFAB5 tracks near-identically (filtered copy? alternate).
+[[param]]
+name = "battery"
+core = true
+label = "Battery voltage"
+unit = "V"
+addr = 0xFB45
+size = 1
+formula = "x * 0.10196"
+source = "live RAM probe 2026-10-25, signature scan + 20-round validation"
+verified = true
+verified_source = "research/data/1429373-validate-rounds.json + tests/fixtures/car-ram-dump.jsonl (running idle, 2026-10-25)"

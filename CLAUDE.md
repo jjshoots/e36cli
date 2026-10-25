@@ -69,3 +69,16 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   swap explains the ECU identity); fault 217 (EGS CAN) is likely an artifact
   of the auto-donor ECU in (probably) a manual car — it will re-store after
   every clear.
+- 2026-10-25 (night): **live RAM probe of 1429373 succeeded** — see
+  research/1429373-probe.md. Trim block = 1429861 layout exactly (injPW
+  0xECBC, STFT 0xED5C/0xED96, LTFT 0xED6E/0xEDA8, additive 0xED66/0xEDA0);
+  battery = 0xFB45 (1429861 − 2), VERIFIED at 14.0–14.4 V running; several
+  documented scalings are wrong for this program (hypotheses in the profile).
+  Diagnostic gold: STFT B1 frozen at exactly 0% + B1 O2 flat at 4.89 V ⇒
+  bank 1 runs OPEN LOOP (dead/unplugged B1 sensor); bank 2 closed loop and
+  adapting. 10 probed params added to the profile; core now includes
+  stft_b1/b2 + battery (replay tests pin the old core-8 via --params).
+  Wire lessons: big 0x06 reads need Timing(deadline=1.0) and ≤0x60 chunks;
+  the FTDI drops off USB under sustained traffic (burst sessions fixed it —
+  suspect cable); 0xF880+ is calibration tables w/ 0x100-periodic mirror;
+  flush_input termios.error escape fixed + regression test (186 tests).

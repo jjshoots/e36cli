@@ -54,3 +54,10 @@ record and continue. Everything is auto-captured to
   sense, citing the capture file in `source_verified`.
 - Fix the simulator anywhere its bytes differed from the car's.
 - Update CLAUDE.md "State / history".
+- **Session 1b — 2026-10-25 night, engine running: RAM probe DONE.** 3 window
+  sweeps + 20-round validation (engine was shut off mid-validation; 8 clean
+  rounds sufficed). Results in research/1429373-probe.md; profile updated.
+  Next live items: confirm LTFT/additive scalings with a cold-start →
+  warm-idle log (watch them move), re-test battery addr with headlights on
+  (voltage dip), and try the 0x0B batch telegram. Use short bursts — the
+  FTDI USB link dies under sustained traffic (try a different cable/port).

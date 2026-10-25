@@ -77,7 +77,7 @@ def test_car_dtc_payload_decodes_to_exact_records():
 
 
 def test_car_live_once_json_values_are_the_recorded_physics():
-    result = replay("car-live-once.jsonl", "live", "--once", "--json")
+    result = replay("car-live-once.jsonl", "live", "--once", "--json", "--params", "rpm,maf,iat,coolant_temp,vss,ignition_advance,vanos_angle,tps")
     assert result.exit_code == 0, result.output
     doc = json.loads(result.output)
     assert doc["profile"] == "ms41.0-1429373"
@@ -97,7 +97,7 @@ def test_car_live_once_json_values_are_the_recorded_physics():
 
 
 def test_car_live_once_table_has_no_unverified_marker_on_promoted_params():
-    result = replay("car-live-once.jsonl", "live", "--once")
+    result = replay("car-live-once.jsonl", "live", "--once", "--params", "rpm,maf,iat,coolant_temp,vss,ignition_advance,vanos_angle,tps")
     assert result.exit_code == 0, result.output
     assert "705" in result.output
     # promoted params render without '?'
