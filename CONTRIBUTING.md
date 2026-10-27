@@ -43,6 +43,16 @@ If you can verify parameters live (values physically plausible at idle,
 throttle/RPM/MAF moving together), say so — that's what promotes
 `verified = false` to `true`.
 
+## Releasing (maintainers)
+
+1. Bump `version` in `pyproject.toml`, commit.
+2. Tag and push: `git tag vX.Y.Z && git push origin vX.Y.Z`.
+3. `release.yml` gates on lint + tests, builds, and publishes to PyPI via
+   **Trusted Publishing** (OIDC — no tokens). One-time setup: configure a
+   Trusted Publisher at <https://pypi.org/manage/account/publishing/>
+   (project `e36cli`, owner `jjshoots`, repo `e36cli`, workflow
+   `release.yml`, environment `pypi`).
+
 ## PR checklist
 
 - `uv run pytest` green, `uvx ruff check` and `uvx ruff format --check` clean
