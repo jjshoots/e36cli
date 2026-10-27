@@ -15,6 +15,7 @@ import typer
 from rich.console import Console
 from rich.table import Table
 
+from . import dashboard as dashmod
 from . import ds2, live, ms41
 from . import dtc as dtcmod
 from . import panel as panelmod
@@ -441,6 +442,61 @@ def panel_cmd(
             )
     except live.LiveFatal as exc:
         raise fail(str(exc)) from None
+    except WIRE_ERRORS as exc:
+        raise fail(str(exc)) from None
+    finally:
+        if stats is not None:
+            err_console.print(stats.summary())
+
+
+@app.command("dashboard")
+def dashboard_cmd(
+    ctx: typer.Context,
+    rate: float = typer.Option(10.0, "--rate", help="Max poll rate (Hz)."),
+    all_params: bool = typer.Option(
+        False, "--all", help="Every profile param (default: core set)."
+    ),
+    params: str | None = typer.Option(None, "--params", help="Comma-separated param names."),
+    dtc_on: bool = typer.Option(
+        True, "--dtc/--no-dtc", help="Also show stored faults (polled between live reads)."
+    ),
+    dtc_interval: float = typer.Option(10.0, "--dtc-interval", help="Seconds between fault polls."),
+    history: int = typer.Option(
+        dashmod.DEFAULT_HISTORY, "--history", help="History ring-buffer size (samples)."
+    ),
+    frames: int | None = typer.Option(
+        None, "--frames", hidden=True, help="Render N frames then exit (testing/CI)."
+    ),
+) -> None:
+    """Full-screen tile dashboard: live squares with history sparklines.
+
+    One tile per parameter — current value, window min/max, and a sparkline
+    of recent samples. Interactive keys: q quit, c clear DME fault memory
+    (asks for an explicit y confirmation — it is a write to the ECU),
+    p pause rendering, +/- grow/shrink the visible history window.
+    """
+    cfg: Config = ctx.obj
+    stats = live.TimingStats() if cfg.timing_debug else None
+    try:
+        with make_client(cfg) as client:
+            profile, _ = resolve_profile(cfg, client)
+            names = live.select_names(profile, all_params, params)
+            dashmod.run_dashboard_screen(
+                client,
+                profile,
+                console,
+                port="sim" if cfg.sim else cfg.port,
+                rate=rate,
+                dtc_interval=dtc_interval if dtc_on else 0.0,
+                names=names,
+                history=history,
+                stats=stats,
+                frames=frames,
+            )
+    except live.LiveFatal as exc:
+        raise fail(str(exc)) from None
+    except KeyError as exc:
+        raise fail(f"unknown param: {exc}") from None
     except WIRE_ERRORS as exc:
         raise fail(str(exc)) from None
     finally:

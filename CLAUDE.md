@@ -105,3 +105,7 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   env "pypi"). v0.1.0 + v0.2.0 (profile pack: 6 scraped DMEs, 158 unverified
   params; MS42/MS43 out of scope — different command scheme, see
   research/profile-scrape.md). Release gate runs ruff: lint before tagging.
+- 2026-10-27 (later): `e36 dashboard` — full-screen tile HUD (HistoryStore ring
+  buffers on the existing Poller, sparkline/grid pure functions in
+  dashboard.py, keys q/c/p/+/- reusing panel's controller + guarded clear).
+  Hidden `--frames N` renders N frames then exits, for CI/non-TTY testing.

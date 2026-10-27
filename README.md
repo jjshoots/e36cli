@@ -44,6 +44,8 @@ Built on Linux, for Linux.
 - **`e36 panel`** — the everything-view: ECU identification, every known
   parameter, decoded status bits, faults — and clear them with a guarded
   keypress.
+- **`e36 dashboard`** — full-screen engine HUD: one tile per parameter with
+  history sparklines, min/max, live faults, and the same guarded fault-clear.
 - **`e36 dtc read` / `dtc clear`** — fault codes with plain-text descriptions,
   occurrence counts, and age in engine-hours. Writes always require
   confirmation.

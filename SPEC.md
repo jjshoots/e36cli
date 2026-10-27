@@ -87,6 +87,7 @@ core = true               # optional: dashboard-core subset (live/log default)
 | `e36 dtc clear` | Clear fault codes | **yes** |
 | `e36 live` | Rich live dashboard (core param set by default; `--all`, `--params a,b`, `--rate`) plus a stored-faults panel (polled every `--dtc-interval` s, default 10; `--no-dtc` hides) | no |
 | `e36 live --once` / `--json` | Single snapshot, human or JSON; includes faults (`--no-dtc` skips; JSON gets a `faults` array, or `faults_error` on a failed read) | no |
+| `e36 dashboard` | Full-screen tile grid with per-param history sparklines (same selection/DTC flags; `--history N` ring-buffer size; keys: `q` quit, `c` clear faults behind the same in-TUI `y` confirmation as panel, `p` pause rendering, `+`/`-` history window) | **c key** |
 | `e36 log OUT.csv` | Stream samples to CSV/JSONL until Ctrl-C (same selection flags; unverified params marked in headers/fields) | no |
 | `e36 raw HEX...` | Send arbitrary frame, print hex response (the probe tool) | caution |
 | `e36 captures` | List/show capture sessions | no |
