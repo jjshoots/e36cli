@@ -1,6 +1,6 @@
 [project]
 name = "e36cli"
-version = "0.1.0"
+version = "0.2.0"
 description = "High-performance DS2 diagnostic CLI for BMW E36 (MS41) over K-line"
 readme = "README.md"
 license = "GPL-3.0-or-later"
