@@ -2,6 +2,19 @@
 name = "e36cli"
 version = "0.1.0"
 description = "High-performance DS2 diagnostic CLI for BMW E36 (MS41) over K-line"
+readme = "README.md"
+license = "GPL-3.0-or-later"
+license-files = ["LICENSE"]
+authors = [{ name = "jjshoots" }]
+keywords = ["bmw", "e36", "ds2", "obd", "k-line", "ms41", "diagnostics"]
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Environment :: Console",
+    "Operating System :: POSIX :: Linux",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator",
+]
 requires-python = ">=3.11"
 dependencies = [
     "pyserial>=3.5",
