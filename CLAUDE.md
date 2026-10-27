@@ -98,3 +98,10 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   "may require ADS interface". HARD RULE now in SPEC: never write to non-DME
   modules. NOT yet validated on the car: panel on a running engine, scan
   module idents (0x80/0x56/0x44 harmless ident probes).
+- 2026-10-27: **open-sourced and shipped.** github.com/jjshoots/e36cli (GPL-3.0
+  — DTC/profile data derives from GPL sources, MIT not available). CI + ruff +
+  pre-commit + release.yml (PyPI Trusted Publishing: tag vX.Y.Z on main →
+  auto-publish; publisher config on pypi.org must say workflow "release.yml",
+  env "pypi"). v0.1.0 + v0.2.0 (profile pack: 6 scraped DMEs, 158 unverified
+  params; MS42/MS43 out of scope — different command scheme, see
+  research/profile-scrape.md). Release gate runs ruff: lint before tagging.
