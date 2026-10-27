@@ -68,7 +68,7 @@ class CaptureWriter:
             self._fh.close()
             self._fh = None
 
-    def __enter__(self) -> "CaptureWriter":
+    def __enter__(self) -> CaptureWriter:
         return self
 
     def __exit__(self, *exc: object) -> None:
@@ -102,7 +102,9 @@ class CaptureReader:
                     self.header = obj
                 else:
                     self.events.append(
-                        CaptureEvent(t=float(obj["t"]), dir=obj["dir"], data=bytes.fromhex(obj["data"]))
+                        CaptureEvent(
+                            t=float(obj["t"]), dir=obj["dir"], data=bytes.fromhex(obj["data"])
+                        )
                     )
             except (ValueError, KeyError, TypeError):
                 self.malformed += 1

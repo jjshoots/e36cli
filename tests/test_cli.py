@@ -195,11 +195,25 @@ def test_live_once_fault_read_failure_is_nonfatal():
     # The real-car capture has no DTC exchange: replay serves silence for the
     # fault read, which must NOT break the snapshot (explicit SPEC behavior).
     fixture = Path(__file__).parent / "fixtures" / "car-live-once.jsonl"
-    result = invoke("--sim-fixture", str(fixture), "live", "--once", "--params", "rpm,maf,iat,coolant_temp,vss,ignition_advance,vanos_angle,tps")
+    result = invoke(
+        "--sim-fixture",
+        str(fixture),
+        "live",
+        "--once",
+        "--params",
+        "rpm,maf,iat,coolant_temp,vss,ignition_advance,vanos_angle,tps",
+    )
     assert result.exit_code == 0, result.output
     assert "Engine RPM" in result.output
     assert "faults: read failed" in result.output
-    result = invoke("--sim-fixture", str(fixture), "live", "--json", "--params", "rpm,maf,iat,coolant_temp,vss,ignition_advance,vanos_angle,tps")
+    result = invoke(
+        "--sim-fixture",
+        str(fixture),
+        "live",
+        "--json",
+        "--params",
+        "rpm,maf,iat,coolant_temp,vss,ignition_advance,vanos_angle,tps",
+    )
     assert result.exit_code == 0, result.output
     doc = json.loads(result.stdout)
     assert "faults_error" in doc and "faults" not in doc

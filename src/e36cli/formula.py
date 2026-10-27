@@ -10,7 +10,7 @@ from __future__ import annotations
 import ast
 import math
 import operator
-from typing import Callable
+from collections.abc import Callable
 
 _BINOPS: dict[type, Callable[[float, float], float]] = {
     ast.Add: operator.add,

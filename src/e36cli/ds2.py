@@ -15,7 +15,7 @@ hunt one byte later rather than discarding the buffer.
 from __future__ import annotations
 
 import time
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 from .transport import Transport, TransportTimeout
 
@@ -90,9 +90,7 @@ class NakResponse(DS2Error):
         self.addr = addr
         self.status = status
         self.meaning = STATUS_MEANINGS.get(status, "unknown status")
-        super().__init__(
-            f"module 0x{addr:02X} answered status 0x{status:02X} ({self.meaning})"
-        )
+        super().__init__(f"module 0x{addr:02X} answered status 0x{status:02X} ({self.meaning})")
 
 
 def xor_checksum(data: bytes) -> int:

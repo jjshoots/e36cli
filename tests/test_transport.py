@@ -124,9 +124,7 @@ def test_set_ftdi_latency_roundtrip(tmp_path, monkeypatch):
     sysfs = tmp_path / "ttyUSB0" / "latency_timer"
     sysfs.parent.mkdir()
     sysfs.write_text("16\n")
-    monkeypatch.setattr(
-        "e36cli.transport.ftdi_latency_sysfs_path", lambda dev: sysfs
-    )
+    monkeypatch.setattr("e36cli.transport.ftdi_latency_sysfs_path", lambda dev: sysfs)
     res = set_ftdi_latency("/dev/ttyUSB0")
     assert res.before_ms == 16
     assert res.after_ms == 1
@@ -136,9 +134,7 @@ def test_set_ftdi_latency_roundtrip(tmp_path, monkeypatch):
 def test_set_ftdi_latency_already_set(tmp_path, monkeypatch):
     sysfs = tmp_path / "latency_timer"
     sysfs.write_text("1\n")
-    monkeypatch.setattr(
-        "e36cli.transport.ftdi_latency_sysfs_path", lambda dev: sysfs
-    )
+    monkeypatch.setattr("e36cli.transport.ftdi_latency_sysfs_path", lambda dev: sysfs)
     res = set_ftdi_latency("/dev/ttyUSB0")
     assert res.ok and res.before_ms == 1
 

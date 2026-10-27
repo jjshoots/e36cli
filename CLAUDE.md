@@ -28,6 +28,9 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
 - Real car: follow GARAGE.md; raw probing via `uv run e36 raw ...`.
 - Captures land in `~/.local/share/e36cli/captures/`; copy interesting ones
   into `tests/fixtures/` as goldens.
+- Lint/format is ruff via pre-commit (`uvx ruff check --fix` + `uvx ruff format`,
+  config in pyproject). CI (.github/workflows/ci.yml) enforces lint + tests on
+  3.11/3.12 + wheel smoke-test, and must stay green.
 
 ## State / history
 

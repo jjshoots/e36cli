@@ -15,7 +15,7 @@ from .transport import set_ftdi_latency
 
 UDEV_HINT = (
     'udev rule (then replug): echo \'SUBSYSTEM=="usb-serial", DRIVER=="ftdi_sio", '
-    "ATTR{latency_timer}=\"1\"' | sudo tee /etc/udev/rules.d/99-e36cli.rules"
+    'ATTR{latency_timer}="1"\' | sudo tee /etc/udev/rules.d/99-e36cli.rules'
 )
 
 

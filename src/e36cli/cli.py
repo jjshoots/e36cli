@@ -6,17 +6,18 @@ import csv
 import json
 import os
 import time
+from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Iterator, Optional
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
+from . import ds2, live, ms41
 from . import dtc as dtcmod
-from . import ds2, live, ms41, panel as panelmod
+from . import panel as panelmod
 from .capture import CaptureWriter, default_capture_dir, list_sessions
 from .doctor import hard_failure, run_checks
 from .sim import SimDtc, SimTransport, SimulatedDME
@@ -41,8 +42,8 @@ CAPTURE_DIR_ENV = "E36CLI_CAPTURE_DIR"
 class Config:
     port: str = "/dev/ttyUSB0"
     sim: bool = False
-    sim_fixture: Optional[Path] = None
-    profile_id: Optional[str] = None
+    sim_fixture: Path | None = None
+    profile_id: str | None = None
     timing_debug: bool = False
 
     @property
@@ -56,10 +57,10 @@ def main(
     ctx: typer.Context,
     port: str = typer.Option("/dev/ttyUSB0", "--port", help="Serial device."),
     sim: bool = typer.Option(False, "--sim", help="Simulated DME instead of hardware."),
-    sim_fixture: Optional[Path] = typer.Option(
+    sim_fixture: Path | None = typer.Option(
         None, "--sim-fixture", help="Replay a capture JSONL (implies --sim)."
     ),
-    profile: Optional[str] = typer.Option(None, "--profile", help="Override profile auto-match."),
+    profile: str | None = typer.Option(None, "--profile", help="Override profile auto-match."),
     timing_debug: bool = typer.Option(False, "--timing-debug", help="Latency stats to stderr."),
 ) -> None:
     ctx.obj = Config(
@@ -102,7 +103,7 @@ def make_client(cfg: Config) -> Iterator[ds2.DS2Client]:
         transport.close()
 
 
-def fail(msg: str) -> "typer.Exit":
+def fail(msg: str) -> typer.Exit:
     err_console.print(f"[red]error:[/red] {msg}")
     return typer.Exit(code=1)
 
@@ -292,8 +293,10 @@ def live_cmd(
     once: bool = typer.Option(False, "--once", help="Single snapshot, then exit."),
     json_out: bool = typer.Option(False, "--json", help="Single snapshot as JSON."),
     rate: float = typer.Option(10.0, "--rate", help="Max poll rate (Hz)."),
-    all_params: bool = typer.Option(False, "--all", help="Every profile param (default: core set)."),
-    params: Optional[str] = typer.Option(None, "--params", help="Comma-separated param names."),
+    all_params: bool = typer.Option(
+        False, "--all", help="Every profile param (default: core set)."
+    ),
+    params: str | None = typer.Option(None, "--params", help="Comma-separated param names."),
     dtc_on: bool = typer.Option(
         True, "--dtc/--no-dtc", help="Also show stored faults (polled between live reads)."
     ),
@@ -369,7 +372,9 @@ def live_cmd(
                     console.print(table)
                     if dtc_on:
                         if faults_error is not None:
-                            err_console.print(f"[yellow]faults: read failed ({faults_error})[/yellow]")
+                            err_console.print(
+                                f"[yellow]faults: read failed ({faults_error})[/yellow]"
+                            )
                         elif not faults:
                             console.print("[green]No stored faults[/green]")
                         else:
@@ -399,9 +404,7 @@ def live_cmd(
 def panel_cmd(
     ctx: typer.Context,
     rate: float = typer.Option(10.0, "--rate", help="Max poll rate (Hz)."),
-    dtc_interval: float = typer.Option(
-        10.0, "--dtc-interval", help="Seconds between fault polls."
-    ),
+    dtc_interval: float = typer.Option(10.0, "--dtc-interval", help="Seconds between fault polls."),
 ) -> None:
     """Everything-dashboard: ident header, all params, state bits, faults.
 
@@ -448,9 +451,7 @@ SIA_EPILOG = (
 
 @app.command("sia", epilog=SIA_EPILOG)
 def sia_cmd(
-    kind: str = typer.Argument(
-        "oil", help="Which indicator to reset: 'oil' or 'inspection'."
-    ),
+    kind: str = typer.Argument("oil", help="Which indicator to reset: 'oil' or 'inspection'."),
     timer: bool = typer.Option(
         False, "--timer", help="Run an on-screen countdown instead of flash counting."
     ),
@@ -515,7 +516,9 @@ def _sia_countdown(seconds: float) -> None:
 
     typer.confirm("Jumper connected — start the countdown?", default=True, abort=True)
     with Progress(
-        TextColumn("holding…"), BarColumn(), TextColumn("{task.fields[left]:.1f}s"),
+        TextColumn("holding…"),
+        BarColumn(),
+        TextColumn("{task.fields[left]:.1f}s"),
         console=console,
     ) as progress:
         task = progress.add_task("hold", total=seconds, left=seconds)
@@ -533,8 +536,10 @@ def log_cmd(
     out: Path = typer.Argument(..., help="Output file (.csv or .jsonl)."),
     rate: float = typer.Option(10.0, "--rate", help="Max sample rate (Hz)."),
     samples: int = typer.Option(0, "--samples", help="Stop after N samples (0 = until Ctrl-C)."),
-    all_params: bool = typer.Option(False, "--all", help="Every profile param (default: core set)."),
-    params: Optional[str] = typer.Option(None, "--params", help="Comma-separated param names."),
+    all_params: bool = typer.Option(
+        False, "--all", help="Every profile param (default: core set)."
+    ),
+    params: str | None = typer.Option(None, "--params", help="Comma-separated param names."),
 ) -> None:
     """Stream samples to CSV/JSONL until Ctrl-C (or --samples).
 
@@ -556,9 +561,7 @@ def log_cmd(
             with out.open("w", newline="", encoding="utf-8") as fh:
                 writer = csv.writer(fh) if as_csv else None
                 if writer:
-                    writer.writerow(
-                        ["t", *(p.name if p.verified else f"{p.name}?" for p in specs)]
-                    )
+                    writer.writerow(["t", *(p.name if p.verified else f"{p.name}?" for p in specs)])
                 t0 = time.monotonic()
                 while samples <= 0 or written < samples:
                     start = time.monotonic()
@@ -566,9 +569,8 @@ def log_cmd(
                     t = time.monotonic() - t0
                     if writer:
                         writer.writerow(
-                            [f"{t:.3f}"] + [
-                                f"{values[n].value:.4g}" if n in values else "" for n in names
-                            ]
+                            [f"{t:.3f}"]
+                            + [f"{values[n].value:.4g}" if n in values else "" for n in names]
                         )
                     else:
                         fh.write(
@@ -638,7 +640,7 @@ def raw(
 @app.command()
 def captures(
     ctx: typer.Context,
-    show: Optional[int] = typer.Option(None, "--show", help="Print events of session #N."),
+    show: int | None = typer.Option(None, "--show", help="Print events of session #N."),
 ) -> None:
     """List capture sessions (or show one's wire events with --show N)."""
     cfg: Config = ctx.obj

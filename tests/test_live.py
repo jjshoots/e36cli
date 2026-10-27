@@ -58,9 +58,7 @@ def test_poller_gives_up_after_consecutive_wire_failures():
     transport = SimTransport(SimulatedDME())
     transport.inject("drop", p=1.0)  # every request starves
     store = live.LiveStore()
-    poller = live.Poller(
-        ds2.DS2Client(transport, FAST), profile(), store, rate=0, max_failures=3
-    )
+    poller = live.Poller(ds2.DS2Client(transport, FAST), profile(), store, rate=0, max_failures=3)
     poller.start()
     poller.join(timeout=10.0)
     assert not poller.is_alive()  # died on its own, nobody called stop()

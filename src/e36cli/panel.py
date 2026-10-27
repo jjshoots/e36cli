@@ -13,11 +13,10 @@ import sys
 import termios
 import time
 import tty
-from typing import Callable
+from collections.abc import Callable
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
-from rich.table import Table
 from rich.text import Text
 
 from . import live, ms41

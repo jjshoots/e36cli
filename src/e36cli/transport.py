@@ -143,7 +143,9 @@ def set_ftdi_latency(dev_path: str, ms: int = 1) -> LatencyResult:
     try:
         before = int(sysfs.read_text().strip())
     except FileNotFoundError:
-        return LatencyResult(None, None, None, error=f"{sysfs} not found (not an FTDI usb-serial device?)")
+        return LatencyResult(
+            None, None, None, error=f"{sysfs} not found (not an FTDI usb-serial device?)"
+        )
     except (OSError, ValueError) as exc:
         return LatencyResult(sysfs, None, None, error=str(exc))
     if before == ms:

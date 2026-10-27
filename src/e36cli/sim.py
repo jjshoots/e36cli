@@ -11,9 +11,9 @@ captures prove correctness. Replay mode serves a recorded session verbatim.
 from __future__ import annotations
 
 import random
-from dataclasses import dataclass, field
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
-from typing import Callable
 
 from . import ds2
 from .capture import CaptureReader, CaptureWriter
@@ -159,7 +159,7 @@ class SimulatedDME:
             return bytes([0xB0])  # bad mode/shape: command rejected (research §2)
         address = int.from_bytes(payload[2:5], "big")
         count = payload[5]
-        if count == 0 or not (RAM_LO <= address and address + count <= RAM_HI):
+        if count == 0 or not (address >= RAM_LO and address + count <= RAM_HI):
             return bytes([0xA2])
         ram = self._ram_snapshot()
         return bytes([ds2.STATUS_OK]) + bytes(ram.get(address + i, 0x00) for i in range(count))
@@ -204,7 +204,7 @@ class SimTransport:
         self._n_requests = 0
 
     @classmethod
-    def from_capture(cls, path: Path) -> "SimTransport":
+    def from_capture(cls, path: Path) -> SimTransport:
         return cls(dme=None, replay=CaptureReader(path))
 
     def inject(self, kind: str, at: int | None = None, p: float = 0.0) -> None:

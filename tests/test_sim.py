@@ -203,4 +203,8 @@ def test_replay_serves_recorded_session_verbatim(tmp_path):
     assert replay.query(DME, ms41.CMD_IDENT).data == ident_data
     assert replay.query(DME, ms41.CMD_DTC_READ).data == dtc_data
     with pytest.raises(ds2.Timeout):  # not in the recording → silence
-        replay.query(DME, bytes([0x06, 0x00, 0x00, 0xDA, 0x2A, 0x02]), timing=ds2.Timing(deadline=0.02, retries=0))
+        replay.query(
+            DME,
+            bytes([0x06, 0x00, 0x00, 0xDA, 0x2A, 0x02]),
+            timing=ds2.Timing(deadline=0.02, retries=0),
+        )

@@ -9,8 +9,8 @@ from __future__ import annotations
 
 import threading
 import time
+from collections.abc import Callable
 from dataclasses import dataclass, field
-from typing import Callable
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
@@ -265,18 +265,14 @@ class Poller(threading.Thread):
         self.stop_event.set()
 
 
-def render_table(
-    profile: ms41.Profile, store: LiveStore, names: list[str] | None = None
-) -> Table:
+def render_table(profile: ms41.Profile, store: LiveStore, names: list[str] | None = None) -> Table:
     values, error = store.snapshot()
     now = time.monotonic()
     table = Table(title=f"e36 live — {profile.id}", caption="? = not verified on car")
     table.add_column("Param")
     table.add_column("Value", justify="right")
     table.add_column("Unit")
-    specs = profile.params if names is None else tuple(
-        p for p in profile.params if p.name in names
-    )
+    specs = profile.params if names is None else tuple(p for p in profile.params if p.name in names)
     for spec in specs:
         entry = values.get(spec.name)
         if entry is None:

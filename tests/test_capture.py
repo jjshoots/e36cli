@@ -37,7 +37,7 @@ def test_hex_encoding_on_disk(tmp_path):
     with CaptureWriter("p", directory=tmp_path) as w:
         w.record("tx", b"\xde\xad\xbe\xef")
         path = w.path
-    lines = [json.loads(l) for l in path.read_text().splitlines()]
+    lines = [json.loads(ln) for ln in path.read_text().splitlines()]
     assert lines[1]["data"] == "deadbeef"
     assert lines[1]["dir"] == "tx"
 

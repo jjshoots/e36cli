@@ -164,8 +164,13 @@ def test_plan_reads_property(addrs, gap):
     """Every param is covered exactly once, within bounds, regardless of layout."""
     params = tuple(
         ms41.ParamSpec(
-            name=f"p{i}", label=f"p{i}", unit="", addr=a, size=s,
-            formula="x", source="t",
+            name=f"p{i}",
+            label=f"p{i}",
+            unit="",
+            addr=a,
+            size=s,
+            formula="x",
+            source="t",
         )
         for i, (a, s) in enumerate(addrs)
     )
@@ -198,7 +203,7 @@ def test_decode_reads_known_values(profiles):
     # iat..coolant gap is 9 bytes; tolerance 16 merges them into one request
     (req,) = plan_reads(profile, names=["coolant_temp", "iat"], gap_tolerance=16)
     data = bytearray(req.count)
-    data[profile.param("iat").addr - req.addr] = 100   # 100*0.747-48 = 26.7
+    data[profile.param("iat").addr - req.addr] = 100  # 100*0.747-48 = 26.7
     data[profile.param("coolant_temp").addr - req.addr] = 171  # 171*0.747-48 = 79.737
     values = decode_reads(profile, req, bytes(data))
     assert values["iat"].value == pytest.approx(26.7)
@@ -252,12 +257,12 @@ def _profile_toml(tmp_path, param_lines: str):
 @pytest.mark.parametrize(
     "lines",
     [
-        'formula = "x / 0"\n',                      # ZeroDivisionError at poll time
-        'endian = "middle"\n',                      # bad endian
-        'mask = "0x3FF"\n',                         # mask as string
-        'formula = "x * 10e400"\n',                 # inf literal
-        'formula = "x * 1' + "0" * 400 + '"\n',     # OverflowError literal
-        'signed = true\nmask = 0x3FF\n',            # ambiguous combination
+        'formula = "x / 0"\n',  # ZeroDivisionError at poll time
+        'endian = "middle"\n',  # bad endian
+        'mask = "0x3FF"\n',  # mask as string
+        'formula = "x * 10e400"\n',  # inf literal
+        'formula = "x * 1' + "0" * 400 + '"\n',  # OverflowError literal
+        "signed = true\nmask = 0x3FF\n",  # ambiguous combination
     ],
 )
 def test_bad_param_fields_raise_profile_error_at_load(tmp_path, lines):

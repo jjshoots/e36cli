@@ -168,7 +168,7 @@ def decode_dtc_response(data: bytes) -> list[Dtc]:
 
 
 def fetch_faults(
-    client: "ds2.DS2Client", timing: "ds2.Timing | None" = None, with_hours: bool = True
+    client: ds2.DS2Client, timing: ds2.Timing | None = None, with_hours: bool = True
 ) -> tuple[list[Dtc], float | None]:
     """Read + decode stored faults over an open client (single-master wire:
     callers own the transport). Returns (faults, current hours counter or None).

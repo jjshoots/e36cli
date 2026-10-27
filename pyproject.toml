@@ -29,6 +29,7 @@ e36 = "e36cli.cli:app"
 dev = [
     "pytest>=8.0",
     "hypothesis>=6.100",
+    "pre-commit>=3.7",
 ]
 
 [build-system]
@@ -46,3 +47,26 @@ packages = ["src/e36cli"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-q"
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "UP", "B", "SIM", "RUF"]
+ignore = [
+    "SIM108",  # ternary rewrites often hurt readability in decode paths
+    "SIM117",  # nested with-statements read better in transport/test code
+    "B008",    # typer.Option in argument defaults is the typer idiom
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = [
+    "RUF012",  # mutable class attrs are fine on test fakes
+]
+# TODO: drop once concurrent profile work on ms41.py lands; then `ruff check --fix` it
+"src/e36cli/ms41.py" = ["UP035", "UP037", "E501"]
+
+[tool.ruff.format]
+# TODO: drop with the per-file-ignores above (same concurrent-edit reason)
+exclude = ["src/e36cli/ms41.py"]

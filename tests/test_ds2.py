@@ -223,9 +223,7 @@ def test_corrupt_checksum_then_clean_retry_succeeds():
 def test_truncated_response_times_out_with_partial():
     tp = FakeTransport([response_frame(0x12, 0xA0, b"\x01\x02")[:4]], echo=True)
     with pytest.raises(Timeout):
-        DS2Client(tp, Timing(deadline=0.05, retries=0, inter_frame_gap=0.0)).query(
-            0x12, b"\x00"
-        )
+        DS2Client(tp, Timing(deadline=0.05, retries=0, inter_frame_gap=0.0)).query(0x12, b"\x00")
 
 
 def test_silent_wire_times_out_after_retries():
@@ -237,9 +235,7 @@ def test_silent_wire_times_out_after_retries():
 
 
 def test_busy_then_ok():
-    tp = FakeTransport(
-        [response_frame(0x12, 0xA1), response_frame(0x12, 0xA0, b"\x07")]
-    )
+    tp = FakeTransport([response_frame(0x12, 0xA1), response_frame(0x12, 0xA0, b"\x07")])
     resp = DS2Client(tp, FAST).query(0x12, b"\x0b\x03")
     assert resp.data == b"\x07"
 

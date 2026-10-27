@@ -1,7 +1,8 @@
 import math
 
 import pytest
-from hypothesis import given, strategies as st
+from hypothesis import given
+from hypothesis import strategies as st
 
 from e36cli.formula import FormulaError, compile_formula, decode_raw
 

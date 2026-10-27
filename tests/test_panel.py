@@ -88,7 +88,7 @@ def test_controller_any_other_key_cancels_confirm():
 
 
 def test_poller_clear_clears_sim_and_rereads():
-    client, dme = make_client(dtcs=[SimDtc(code=100), SimDtc(code=214)])
+    client, _dme = make_client(dtcs=[SimDtc(code=100), SimDtc(code=214)])
     store = live.LiveStore()
     poller = live.Poller(client, profile_ms411(), store, dtc_interval=1000.0)
     # Drive the internals synchronously: initial fault poll, then the clear.
@@ -137,9 +137,7 @@ def test_render_panel_header_params_and_hints():
     profile = profile_ms411()
     store = live.LiveStore()
     store.update(live.poll_once(client, profile))
-    ident = ms41.parse_ident(
-        client.query(ds2.ADDR["DME"], ms41.CMD_IDENT).data
-    )
+    ident = ms41.parse_ident(client.query(ds2.ADDR["DME"], ms41.CMD_IDENT).data)
     controller = PanelController(StubPoller())
     text = render_to_text(render_panel(profile, ident, store, controller, 10.0))
     assert "1437806" in text  # ident header
