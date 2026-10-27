@@ -29,26 +29,31 @@ addresses from where*.
 The BimmerStein repo is GPL-3.0; e36cli is GPL-3.0; deriving profile data from
 it is fine and the provenance strings name it.
 
-### 1.1 Not yet checked — open work
+### 1.1 External sources swept — all dry for new ECU IDs
 
-A parallel web sweep of three further candidate sources was started and did
-**not** return within this pass, so they remain genuinely unexamined rather
-than examined-and-empty. Do not read §6's "no source found" as covering them:
+A parallel web sweep covered the other candidates named in the directive.
+**None yielded a per-ECU-ID RAM map for an ECU ID not already covered**, so no
+profile in this pass draws on them. Recorded so nobody re-runs the search:
 
-- `nyetwurk/openms41` and sibling openms41 repos — the lineage behind the
-  SS1v2 / `SHINDE1` firmware. Most likely place to find more `SHINDE1`
-  channels, or a second opinion on the MS41.2 column.
-- RomRaider's upstream BMW/DS2 definition files. The BimmerStein XML is in
-  RomRaider's logger format and `ms41-data.md` §3.6 notes its parameter IDs
-  (`P8`, `E217`, …) line up with RomRaider's `DS2Parameter.java`, so upstream
-  plausibly carries ECU IDs BimmerStein dropped.
-- ms4x.net wiki (MS41 pages, DS2 protocol, Logger.S). `ms41-data.md` §3.8
-  already cites Logger.S for the MS4x rate claim; the MS41 pages themselves
-  have not been mined for addresses.
+| Source | Finding |
+|---|---|
+| `nyetwurk/openms41` | **Does not exist.** nyetwurk has no BMW/MS41 repos (ME7/Audi tooling only). |
+| OpenMS41 org — https://github.com/OpenMS41/pyms41 | The org's only repo. Flashing/ident helpers; `pyms41/ds2.py:30` `READ_MEM = 6`, `:87` `read_vin()` issues a `0x06` read of `0x001D07`. **No logger definitions, no parameter tables, no `SHINDE1` map.** |
+| `ms4x-net/ms41` | 4 TunerPro **XDF** files, ROM ID `1429861` only — flash offsets, not RAM. |
+| `ba114/Siemens-MS41` | One RomRaider **ECU** (not logger) definition — flash `storageaddress`, not RAM. |
+| RomRaider source tree | Ships **zero** BMW logger definitions; all 8 known MS41 IDs grep to nothing. Only `DS2ParameterCrossReference.java:40-45` / `DS2Parameter.java:31-41`, a 6-entry name map (P17, P11, P2, E23, E24, E217) with **no addresses**. |
+| RomRaider forum t=10695 ("MS41 ECU & Logger Definitions") | The XMLs are **attachments behind registration + manual moderator approval**. Inaccessible. |
+| ms4x.net `BMW_DS2_Serial_Protocol` | **Stub** — page body is literally the text `asdf` (last edited 2020-03-31). |
+| ms4x.net `Logger_Definition_Files` | Real page, but the "Siemens MS41" and "MS43 Standard Logging" sections are **empty**. |
+| ms4x.net `Siemens_MS41`, `Definition_Files`, `Logger.S` | Real content, but flash layout / tuning theory / ESP32 hardware. **No RAM addresses keyed to any ECU ID.** |
+| `1427703`, `7505858`, `1438068`, `1438137` searched directly | **Nothing found.** 1427703 appears only as a non-flashable part number, 7505858 only in reman compatibility lists, the other two not at all. |
 
-Priority if someone picks this up: openms41 first (most likely to be
-non-empty), then RomRaider upstream. The three ECU IDs that would most benefit
-are `1427703`, `7505858` and `1437804` — the ones demoted to generic in §4.
+One source *does* publish `0x06` absolute RAM addresses: RomRaider forum
+**t=11086** ("DS2 - datalogging MS41/42/43 by serial protocol", 35 pages, post
+text ungated). It corroborates rather than extends what we ship — see §5.6.
+
+So the demotions in §4 stand: `1427703`, `7505858` and `1437804` have no
+published RAM map anywhere reachable.
 
 ## 2. Per-ECU-ID inventory
 
@@ -200,6 +205,53 @@ and the ID can be folded back into `ms41.1`.
    targets in SPEC are stated for the 11-param core; the 7-param core is
    strictly cheaper.
 
+### 5.6 Independent corroboration — and two scaling conflicts
+
+RomRaider forum thread **t=11086** is the only reachable public source that
+publishes `0x06` absolute RAM addresses. It confirms the wire format this
+project already implements (d_munter, p.3, `&start=30`):
+
+```
+ECU | LEN | 06 | 00 | SEG (<3 = DPP0) | HI | LO | CNT (<0xFD) | XOR
+e.g. 12 09 06 00 00 EF A2 02 [crc]   = read 2 bytes at 0xEFA2
+```
+
+— byte-for-byte what `ms41.build_read_payload` emits, and what
+`research/ds2-protocol.md` §4.5 claims. Good.
+
+It corroborates several shipped addresses: the `0xFD24` state word (bit 0
+`S_LL` idle, bit 1 `S_VL` WOT) and `0xFD14` (bit 3), both via posted IDA
+disassembly on p.7; `0xE98D` / `0xE9D9` knock; and the `0xF030` / `0xF0DC`
+multiplicative-trim family for `1406464`.
+
+**Two conflicts with the BimmerStein values we ship**, both on MS41.2 /
+`1406464`, both left as-is (BimmerStein wins: it is machine-readable,
+per-ECU-ID, and internally consistent — but a car will settle it):
+
+| Quantity | Shipped (BimmerStein XML) | t=11086 p.4 (`&start=45`) | Note |
+|---|---|---|---|
+| Additive fuel adaptation `0xF028` / `0xF0D4` | `(x-32768) * 0.00534` ms | `(x-32768) * 0.004` | 0.00534 is the injector-PW LSB, which is the stronger internal consistency argument — but 0.004 is a suspiciously round number. ~33 % apart. |
+| Multiplicative trim `0xF030` / `0xF0DC` | `(x-32768) * 100 / 65535` % | `(x-32768) * 100 / 65536` | Numerically irrelevant (1.5e-5 relative). Noted only so a future reader does not "fix" one into the other. |
+
+Also conflicting, and *not* shipped by any profile: throttle adaptation
+`0xE8DE` — `ms41-data.md` §3.6.1-extras has int16 × `0.001526`, t=11086 has
+`x * 0.47` and flags it uncertain. Unresolved; another reason it stays out.
+
+**Candidate params from t=11086 that were NOT encoded.** The thread lists a
+`STATUS_*` block (p.6, `&start=75`) and an adaptation block (p.4) with real
+`0x06` addresses — e.g. `0xDAA4` VANOS angle, `0xDB10` tank differential
+pressure, `0xE873`/`0xE874`/`0xE876` VANOS positions/times, `0xEDE6` lambda
+counter, `0xFD18` (bit 2 `S_ASC`, bit 4 `S_AC`, bit 5 `S_KO`, bit 7 `S_DWA`),
+`0xFAA2` TPS base (10-bit, `TPS_MES = TPS_BAS/4`), and six knock-adaptation
+maps at `0xD840`-`0xD980`. They are left out of this pass because the thread's
+ECU-ID attribution is uneven — the p.4 block is explicitly "MS41.2 1406464"
+with the author adding *"haven't confirmed if it's the same for MS41.1"*,
+while the p.6 block carries no ECU-ID attribution at all. Encoding them would
+mean guessing which column they belong to, which is exactly what this pass
+refused to do elsewhere. They are a good next scrape for whoever can attribute
+them; the VANOS and tank-pressure channels in particular would be genuinely
+new diagnostic coverage.
+
 ## 6. MS42 / MS43 — deliberately not added
 
 The only MS4x ECU IDs any consulted source names are in
@@ -208,17 +260,47 @@ with **no addresses**: MS42 = `7500255`, `7505859`, `7526753`; MS43 =
 `4482751`, `7511570`, `7528050`, `7545150`, `7551615`, `7571017`, `7572342`.
 `dtc.py` L58 additionally notes its single-byte DTC database is shared across
 MS41/MS42/MS43. Of the candidate IDs in the directive, `1429764`, `1430844` and
-`7519308` appear **nowhere** in the repo. **No RAM parameter map for any
-MS42/MS43 ECU ID was found in any consulted source**, so there is nothing to
-encode even if the command scheme matched. (Caveat: "consulted" means the
-sources in §1; the three in §1.1 were not reached.)
+`7519308` appear nowhere in that repo — they turn up instead in the RomRaider
+forum definitions quoted below, as MS42 (`1429764`, `1430844`) and MS43
+(`7519308`). **No source consulted in §1 or §1.1 publishes a RAM parameter map
+for any MS42/MS43 ECU ID**, so there is nothing to encode.
 
-Separately, `ms41-data.md` §3.8 already records that MS4x live logging is a
-different animal: the Logger.S project reports up to 33 Hz on MS42/MS43 because
-those ECUs take an *extended-logging patch*, which MS41 lacks. The MS4x logging
-path is not the MS41 `0x06` RAM read. Per the directive, no MS42/MS43 profiles
-are added; if one is ever wanted it needs its own protocol research, not a
-profile file.
+More importantly, **MS42/MS43 live logging does not use the `0x06`
+absolute-address command at all** — so even a complete MS4x address table
+could not be expressed as an e36cli profile, whose entire model is
+`addr`/`size` under `0x06`. Three independent confirmations:
+
+1. **MS42** — RomRaider forum t=12874. Every `ecuparam` is
+   `group="0x0B" subgroup="0x03"` with `<ecu id="1429764,1430844">` and
+   `<address>` values of `0x00, 0x02, 0x04, 0x05, 0x07, 0x08, 0x09, 0x0B,
+   0x0C, 0x1F` — **byte offsets into the fixed `12 05 0B 03` group response**,
+   not memory addresses.
+2. **MS43** — t=11086 p.34 (`&start=495`), quoting the shipped
+   `logger_METRIC_EN_v346.xml`: `group="0x0B" subgroup="0x020E"`,
+   `<ecu id="7511570,7519308,7545150"><address>0x000019</address>`. `0B 02 0E`
+   is the **read-procedure / ADC-channel** command; `0x19` is a channel
+   number.
+3. **The ms4x "extended logging" patch** is a *custom, non-standard DS2
+   command injected by flashing the ECU* — from
+   `https://www.ms4x.net/images/a/a8/Siemens_MS43_Extended_Log_v2.9_M54B30.adx`:
+   switch the K-line to **125000 baud** with `12 08 91 01 E8 48 00`, then poll
+   `12 05 0B B0` for a fixed 82-byte frame (MS42: 69 bytes). All 87 values use
+   `<packetoffset>`, **never an address**. This is what buys Logger.S the
+   33 Hz quoted in `ms41-data.md` §3.8 — and it requires flashed firmware.
+
+RomRaider's own dispatcher makes the distinction explicit
+(`DS2LoggerConnection.java:103-233`): `0x06 0x00` → `constructReadMemoryRequest`,
+the absolute-address path MS41 uses; `0x0B 0x02` → procedure read;
+`0x0B 0x03/04/90-95` → fixed predefined group by offset. MS42/MS43 definitions
+live in the latter two; MS41's live in the first (and in `0x0B 0x01`, the
+set-address-list batch form, which is also absolute — see `ms41-data.md` §3.7).
+
+Per the directive, no MS42/MS43 profiles are added. If one is ever wanted it
+needs a new response-offset data model and its own protocol research, not a
+profile file. Also worth noting for completeness: dschultz states on t=11086
+p.25 that RomRaider supports MS43 idents `7511570`, `7519308`, `7545150` and
+MS41 idents only `1406464` / `1437806` — so RomRaider upstream covers **fewer**
+MS41 variants than this repo now does.
 
 ## 7. Reproducing this scrape
 
