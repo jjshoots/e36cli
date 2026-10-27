@@ -187,7 +187,9 @@ def ident(ctx: typer.Context) -> None:
     # descriptions already end in "(unverified)" — swap that for the louder
     # marker rather than printing both.
     desc = profile.description.removesuffix("(unverified)").rstrip()
-    marker = "" if any(p.verified for p in profile.params) else " [yellow](unverified profile)[/yellow]"
+    marker = (
+        "" if any(p.verified for p in profile.params) else " [yellow](unverified profile)[/yellow]"
+    )
     table.add_row("Profile", f"{profile.id} — {desc}{marker}")
     console.print(table)
 

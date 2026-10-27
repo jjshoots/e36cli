@@ -68,7 +68,9 @@ def test_no_ecu_id_claimed_by_two_profiles(profiles):
     claimed: dict[str, str] = {}
     for profile in profiles.values():
         for ecu_id in profile.match_hw:
-            assert ecu_id not in claimed, f"{ecu_id} claimed by {claimed.get(ecu_id)} and {profile.id}"
+            assert ecu_id not in claimed, (
+                f"{ecu_id} claimed by {claimed.get(ecu_id)} and {profile.id}"
+            )
             claimed[ecu_id] = profile.id
 
 
