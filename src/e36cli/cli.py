@@ -182,7 +182,13 @@ def ident(ctx: typer.Context) -> None:
     for name, value in rows:
         if value is not None:
             table.add_row(name, str(value))
-    table.add_row("Profile", f"{profile.id} — {profile.description}")
+    # SPEC invariant 3: say it out loud when nothing in the matched profile has
+    # ever been checked against a real car (scraped-only profiles). Scraped
+    # descriptions already end in "(unverified)" — swap that for the louder
+    # marker rather than printing both.
+    desc = profile.description.removesuffix("(unverified)").rstrip()
+    marker = "" if any(p.verified for p in profile.params) else " [yellow](unverified profile)[/yellow]"
+    table.add_row("Profile", f"{profile.id} — {desc}{marker}")
     console.print(table)
 
 

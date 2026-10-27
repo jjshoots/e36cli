@@ -36,6 +36,22 @@ def test_ident_shows_ecu_and_profile():
     assert "2564" in result.output  # ISN from the sim ident serial
 
 
+def test_ident_marks_a_wholly_unverified_profile():
+    # ms41.1 is scraped-only: nothing in it has been seen on a car, and the
+    # profile line has to say so (SPEC invariant 3).
+    result = invoke("--sim", "ident")
+    assert result.exit_code == 0, result.output
+    assert "unverified profile" in " ".join(result.output.split())
+
+
+def test_ident_omits_the_marker_for_a_part_verified_profile():
+    # ms41.0-1429373 carries garage-session-verified params, so no shout.
+    result = invoke("--sim", "--profile", "ms41.0-1429373", "ident")
+    assert result.exit_code == 0, result.output
+    assert "ms41.0-1429373" in result.output
+    assert "unverified profile" not in " ".join(result.output.split())
+
+
 def test_scan_lists_dme_as_responder():
     result = invoke("--sim", "scan")
     assert result.exit_code == 0, result.output

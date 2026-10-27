@@ -12,8 +12,11 @@
 
 [profile]
 id = "ms41.2"
-description = "MS41.2 (US S52B32: E36 M3, Z3 M) — ECU ID 1406464; also MS41.3 SHINDE1"
-match_hw = ["1406464", "SHINDE1"]
+description = "MS41.2 (US S52B32: E36 M3, Z3 M) — ECU ID 1406464 (unverified)"
+match_hw = ["1406464"]
+# SHINDE1 (MS41.3 community firmware) moved to ms41.3-shinde1.toml on 2026-10-27:
+# same RAM map, plus the MS41.3-only wideband channels (0xE800/0xE811) that do
+# not exist on stock MS41.2. See research/profile-scrape.md §4.
 # ZB numbers from SP-Daten MDS411 (R3VLimited archive, research §1.2)
 # ZB numbers (unused by matching; SP-Daten reference): []
 # SW numbers (unused by matching): []

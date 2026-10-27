@@ -27,6 +27,16 @@ def make_client(dme: SimulatedDME | None = None, **sim_kw) -> ds2.DS2Client:
     return ds2.DS2Client(transport, ds2.Timing(deadline=0.05, inter_frame_gap=0.0))
 
 
+def test_sim_models_every_shipped_profile():
+    # The sim inverts each param's formula to build RAM. A newly scraped profile
+    # with an unmodelled param name or an uninvertible scaling would blow up
+    # here rather than at `e36 live --sim` time.
+    for pid, profile in sorted(ms41.load_profiles().items()):
+        ram = make_dme(profile=profile)._ram_snapshot()
+        for spec in profile.params:
+            assert spec.addr in ram, f"{pid}:{spec.name}"
+
+
 # --- command handling -------------------------------------------------------
 
 

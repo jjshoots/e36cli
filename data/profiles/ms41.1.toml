@@ -12,8 +12,16 @@
 
 [profile]
 id = "ms41.1"
-description = "MS41.1 (US OBD-II M52 / Alpina S52B32) — ECU ID 1437806/1437804"
-match_hw = ["1437806", "1437804"]
+description = "MS41.1 (US OBD-II M52) — ECU ID 1437806 (unverified)"
+match_hw = ["1437806"]
+# Previously also claimed 1437804 (E39 528i Sedan USA 1998 w/ DM-TL, Alpina B10
+# 3.2). Removed 2026-10-27 (research/profile-scrape.md §4): 1437804 appears only
+# in the SP-Daten S11 tables; no source publishes a RAM map for it, so matching
+# it here applied 1437806's variant-specific addresses (injector PW, trims, load,
+# battery) on faith. It now falls back to ms41-generic (common block, correct for
+# every MS41) until a 1437804 map is sourced or probed on a car. Same treatment
+# as 1427703 / 7505858 / 1440176 in ms41.0.toml. Use `--profile ms41.1` to
+# override if you have a 1437804 and accept the risk.
 # ZB numbers from SP-Daten MDS411 (R3VLimited archive, research §1.2)
 # ZB numbers (unused by matching; SP-Daten reference): ["1438067", "1438071", "1438065", "7500903"]
 # SW numbers (unused by matching): ["1438068", "1438072", "1438066", "7500904"]

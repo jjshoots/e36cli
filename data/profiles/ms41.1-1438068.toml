@@ -1,0 +1,309 @@
+# MS41.1 family, ECU ID 1438068 — an SP-Daten SW-NR (1438068DA) that BimmerStein's
+# tooling keys on as an ECU-ID string (research/ms41-data.md §1.2, §9.5). The S11 row
+# pairs SW 1438068DA with HW 1437806 (E36 328i USA from 3/96). SCRAPED, UNVERIFIED.
+#
+# 1438068 is NOT in the logger XML's ECU-ID lists, so the common block is sourced from
+# ds2.py's batch setup frame (shared entries hold for every key, ds2.py L772) and the 8
+# variant-specific addresses from _BATCH_ECU_ADDRS['1438068'] (ds2.py L785). Those equal
+# the 1437806 column, but they are listed under 1438068 in its own right.
+#
+# ST trims are the high-byte-only form that the source lists for this ID.
+#
+# Scaling conventions (same as the other shipped profiles, research/ms41-data.md §7):
+# RAM reads via DS2 cmd 0x06 are little-endian; 10-bit ADC channels are
+# (x & 0x3FF) * 5 / 1023 V. Coolant/IAT use the RAM scaling 0.747x-48, NOT the
+# 0x0B 03 group-read scaling. Nothing here has been checked on a car.
+
+
+[profile]
+id = "ms41.1-1438068"
+description = "MS41.1 family — ECU ID/SW-NR 1438068 (unverified)"
+match_hw = ["1438068"]
+
+[[param]]
+name = "rpm"
+core = true
+label = "Engine RPM"
+unit = "rpm"
+addr = 0xDA2A
+size = 2
+formula = "x"
+source = "BimmerStein-ECU-Tool ds2.py L815 batch setup frame, entry 6, 2b Engine RPM — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML P8 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "maf"
+core = true
+label = "Mass air flow"
+unit = "kg/h"
+addr = 0xDA34
+size = 2
+formula = "x * 0.25"
+source = "BimmerStein-ECU-Tool ds2.py L816 batch setup frame, entry 7, 2b Mass Air Flow — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML P12 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "idle_valve"
+label = "Idle valve pos"
+unit = "%"
+addr = 0xDA36
+size = 2
+signed = true
+formula = "x * 0.00153"
+source = "BimmerStein-ECU-Tool ds2.py L809 batch setup frame, entry 0, 2b Idle Valve Position — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML E9 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "iat"
+core = true
+label = "Intake air temp"
+unit = "°C"
+addr = 0xDA50
+size = 1
+formula = "x * 0.747 - 48"
+source = "BimmerStein-ECU-Tool ds2.py L818 batch setup frame, entry 9, 1b Intake Air Temp — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML P11 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "evap_duty"
+label = "EVAP purge duty"
+unit = "%"
+addr = 0xDA56
+size = 1
+formula = "x * 100 / 255"
+source = "BimmerStein-ECU-Tool ds2.py L822 batch setup frame, entry 13, 1b CPV Duty Cycle — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML BS_STD_EVAP_PURGE (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "coolant_temp"
+core = true
+label = "Coolant temp"
+unit = "°C"
+addr = 0xDA5A
+size = 1
+formula = "x * 0.747 - 48"
+source = "BimmerStein-ECU-Tool ds2.py L817 batch setup frame, entry 8, 1b Coolant Temp — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML P2 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "vss"
+core = true
+label = "Vehicle speed"
+unit = "km/h"
+addr = 0xDA63
+size = 1
+formula = "x"
+source = "BimmerStein-ECU-Tool ds2.py L813 batch setup frame, entry 4, 1b Vehicle Speed — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML P9 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "ignition_advance"
+core = true
+label = "Ignition advance"
+unit = "°"
+addr = 0xE989
+size = 1
+formula = "0.373 * x - 23.6"
+source = "BimmerStein-ECU-Tool ds2.py L811 batch setup frame, entry 2, 1b Ignition Advance — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML P10 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "knock_retard"
+label = "Knock retard (current)"
+unit = "°"
+addr = 0xE98D
+size = 1
+formula = "(x - 128) * 0.375"
+source = "BimmerStein-ECU-Tool ds2.py L812 batch setup frame, entry 3, 1b Knock Retard — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML E217 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "knock_retard_global"
+label = "Knock retard (global)"
+unit = "°"
+addr = 0xE9D9
+size = 1
+formula = "(x - 128) * 0.375"
+source = "BimmerStein-ECU-Tool ds2.py L820 batch setup frame, entry 11, 1b Global Knock Retard — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML E24 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "vanos_angle"
+core = true
+label = "VANOS angle"
+unit = "°"
+addr = 0xE9E6
+size = 1
+formula = "x * 0.3745"
+source = "BimmerStein-ECU-Tool ds2.py L821 batch setup frame, entry 12, 1b VANOS measured angle — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML E11 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "o2_front_b1"
+label = "O2 front bank 1"
+unit = "V"
+addr = 0xFA9A
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein-ECU-Tool ds2.py L831 batch setup frame, entry 21, 2b Front O2 bank 1 ADC — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML BS_STD_O2_B1 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "o2_front_b2"
+label = "O2 front bank 2"
+unit = "V"
+addr = 0xFA98
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein-ECU-Tool ds2.py L832 batch setup frame, entry 22, 2b Front O2 bank 2 ADC — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML BS_STD_O2_B2 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "maf_volts"
+label = "MAF voltage"
+unit = "V"
+addr = 0xFA9E
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein-ECU-Tool ds2.py L833 batch setup frame, entry 23, 2b MAF ADC — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML P18 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "engine_state_bits"
+label = "Engine state bits"
+unit = "bits"
+addr = 0xFD24
+size = 1
+formula = "x"
+source = "BimmerStein-ECU-Tool ds2.py L827 batch setup frame, entry 18, 1b engine-state byte — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML BS_STATE_CLOSED_THROTTLE/BS_STATE_FULL_LOAD (bit0=closed throttle inv, bit1=full load) (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "operating_state_bits"
+label = "Operating state bits"
+unit = "bits"
+addr = 0xFD14
+size = 1
+formula = "x"
+source = "BimmerStein-ECU-Tool ds2.py L828 batch setup frame, entry 19, 1b operating-state byte — shared across every _BATCH_ECU_ADDRS key including 1438068 (ds2.py L772 states: Entries 0-4, 6-13, 18-23 are shared, same address on every MS41); scaling from logger XML BS_STATE_ENGINE_START/PART_LOAD/DECEL_CUT (bit1=start, bit3=part load, bit5=decel cut) (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "tps_volts"
+label = "TPS voltage"
+unit = "V"
+addr = 0xE8DA
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein-ECU-Tool live_data.py L51 _WBO2_INPUT_SOURCES (MS41-wide ADC source table, not ECU-ID-scoped) (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "o2_rear_b1"
+label = "O2 rear bank 1"
+unit = "V"
+addr = 0xFA96
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein-ECU-Tool live_data.py L53 _WBO2_INPUT_SOURCES (MS41-wide ADC source table, not ECU-ID-scoped) (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "o2_rear_b2"
+label = "O2 rear bank 2"
+unit = "V"
+addr = 0xFA94
+size = 2
+mask = 0x03FF
+formula = "x * 5 / 1023"
+source = "BimmerStein-ECU-Tool live_data.py L54 _WBO2_INPUT_SOURCES (MS41-wide ADC source table, not ECU-ID-scoped) (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "tps"
+core = true
+label = "Throttle position"
+unit = "%"
+addr = 0xE8D0
+size = 1
+formula = "x * 100 / 255"
+source = "BimmerStein-ECU-Tool ds2.py L783 _BATCH_ECU_ADDRS['1438068'] column 0 (tps); scaling from logger XML P13 L120 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "injector_pw"
+label = "Injector pulse width"
+unit = "ms"
+addr = 0xEF96
+size = 2
+formula = "x * 0.00534"
+source = "BimmerStein-ECU-Tool ds2.py L783 _BATCH_ECU_ADDRS['1438068'] column 5 (injector_pw); scaling from logger XML BS_INJECTOR_PW L142 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "stft_b1_hi"
+core = true
+label = "Short trim B1 (high byte)"
+unit = "%"
+addr = 0xF037
+size = 1
+formula = "(x - 128) * 100 / 256"
+source = "BimmerStein-ECU-Tool ds2.py L783 _BATCH_ECU_ADDRS['1438068'] column 3 (st_b1_hi); ds2.py L776-779 (0xF037 = 0xF036+1) (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "stft_b2_hi"
+core = true
+label = "Short trim B2 (high byte)"
+unit = "%"
+addr = 0xF0F3
+size = 1
+formula = "(x - 128) * 100 / 256"
+source = "BimmerStein-ECU-Tool ds2.py L783 _BATCH_ECU_ADDRS['1438068'] column 4 (st_b2_hi); ds2.py L776-779 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "ltft_b1"
+label = "Long trim B1"
+unit = "%"
+addr = 0xF048
+size = 2
+formula = "(x - 32768) * 100 / 65535"
+source = "BimmerStein-ECU-Tool ds2.py L783 _BATCH_ECU_ADDRS['1438068'] column 1 (lt_b1); scaling from logger XML E21 L160 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "ltft_b2"
+label = "Long trim B2"
+unit = "%"
+addr = 0xF104
+size = 2
+formula = "(x - 32768) * 100 / 65535"
+source = "BimmerStein-ECU-Tool ds2.py L783 _BATCH_ECU_ADDRS['1438068'] column 2 (lt_b2); scaling from logger XML E22 L166 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "load"
+label = "Engine load"
+unit = "mg/stroke"
+addr = 0xFC52
+size = 2
+formula = "x * 0.021195"
+source = "BimmerStein-ECU-Tool ds2.py L783 _BATCH_ECU_ADDRS['1438068'] column 6 (engine_load); scaling from logger XML E2 L171 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false
+
+[[param]]
+name = "battery"
+core = true
+label = "Battery voltage"
+unit = "V"
+addr = 0xFC9D
+size = 1
+formula = "x * 0.10196"
+source = "BimmerStein-ECU-Tool ds2.py L783 _BATCH_ECU_ADDRS['1438068'] column 7 (battery); scaling from logger XML P17 L176 (https://github.com/CAATZ/BimmerStein-ECU-Tool); research/profile-scrape.md"
+verified = false

@@ -12,8 +12,14 @@
 
 [profile]
 id = "ms41.0"
-description = "MS41.0 (Euro M52) — ECU ID 1429861/1427703/1440176"
-match_hw = ["1427703", "1429861", "1440176", "7505858"]
+description = "MS41.0 (Euro M52) — ECU ID 1429861 (unverified)"
+match_hw = ["1429861"]
+# Previously also claimed 1427703, 1440176 and 7505858. Removed 2026-10-27
+# (research/profile-scrape.md §4): those are SP-Daten HW-NRs with no published
+# RAM map, so matching them here silently applied 1429861's *variant-specific*
+# addresses (trims, injector PW, load, battery) to ECUs no source covers.
+#   1440176 -> ms41.0-1440176.toml (logger XML lists it, common block only)
+#   1427703, 7505858 -> no address source at all; they fall back to ms41-generic.
 # ZB numbers from SP-Daten MDS411 (R3VLimited archive, research §1.2)
 # ZB numbers (unused by matching; SP-Daten reference): ["1429954", "1429955", "1438745", "1438790"]
 # SW numbers (unused by matching): []

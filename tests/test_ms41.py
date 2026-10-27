@@ -30,8 +30,53 @@ def profiles():
 # --- profile loading / schema ---------------------------------------------
 
 
+# Every shipped profile, and the ECU IDs it claims. Keeping the mapping here
+# (rather than deriving it) makes an accidental match_hw change a test failure.
+SHIPPED_PROFILES = {
+    "ms41-generic": (),
+    "ms41.0": ("1429861",),
+    "ms41.0-1405854": ("1405854",),
+    "ms41.0-1429373": ("1429373",),
+    "ms41.0-1432401": ("1432401",),
+    "ms41.0-1438137": ("1438137",),
+    "ms41.0-1440176": ("1440176",),
+    "ms41.1": ("1437806",),
+    "ms41.1-1438068": ("1438068",),
+    "ms41.2": ("1406464",),
+    "ms41.3-shinde1": ("SHINDE1",),
+}
+
+# Scraped-from-a-document profiles: nothing in them has been seen on a car, and
+# the description has to say so (profile-expansion pass, 2026-10-27).
+SCRAPED_PROFILE_IDS = tuple(
+    pid for pid in SHIPPED_PROFILES if pid not in ("ms41-generic", "ms41.0-1429373")
+)
+
+
 def test_all_profiles_load(profiles):
-    assert set(profiles) == {"ms41.0", "ms41.0-1429373", "ms41.1", "ms41.2", "ms41-generic"}
+    assert set(profiles) == set(SHIPPED_PROFILES)
+
+
+def test_every_profile_matched_by_its_ecu_ids(profiles):
+    for pid, ecu_ids in SHIPPED_PROFILES.items():
+        assert profiles[pid].match_hw == ecu_ids, pid
+        for ecu_id in ecu_ids:
+            assert match_profile(ecu_id, profiles).id == pid
+
+
+def test_no_ecu_id_claimed_by_two_profiles(profiles):
+    claimed: dict[str, str] = {}
+    for profile in profiles.values():
+        for ecu_id in profile.match_hw:
+            assert ecu_id not in claimed, f"{ecu_id} claimed by {claimed.get(ecu_id)} and {profile.id}"
+            claimed[ecu_id] = profile.id
+
+
+def test_scraped_profiles_announce_unverified(profiles):
+    for pid in SCRAPED_PROFILE_IDS:
+        profile = profiles[pid]
+        assert profile.description.endswith("(unverified)"), pid
+        assert not any(p.verified for p in profile.params), pid
 
 
 def test_profile_schema(profiles):
@@ -49,6 +94,25 @@ def test_profile_schema(profiles):
                 assert p.verified_source, f"{profile.id}:{p.name} verified without source"
             assert p.source, f"{profile.id}:{p.name} missing provenance"
             assert callable(p._fn)  # formula compiled at load
+            # formula actually evaluates across the raw range (load-time probe
+            # only checks 0/1/max — walk the whole byte range for 1-byte params)
+            for raw in (0, 1, (1 << (8 * p.size)) - 1):
+                assert isinstance(p._fn(float(raw)), float)
+
+
+def test_every_profile_has_a_core_subset(profiles):
+    for profile in profiles.values():
+        core = profile.core_params
+        assert 6 <= len(core) <= 12, f"{profile.id}: {len(core)} core params"
+        assert {"rpm", "coolant_temp"} <= {p.name for p in core}, profile.id
+
+
+def test_profile_params_fit_the_read_planner(profiles):
+    for profile in profiles.values():
+        reqs = plan_reads(profile)
+        assert reqs, profile.id
+        covered = {p.name for r in reqs for p, _ in r.params}
+        assert covered == {p.name for p in profile.params}, profile.id
 
 
 def test_ms411_key_params(profiles):
@@ -109,11 +173,57 @@ def test_match_by_ecu_id(profiles):
     assert match_profile(parse_ident(IDENT_PAYLOAD), profiles).id == "ms41.1"
     assert match_profile("1429861", profiles).id == "ms41.0"
     assert match_profile("1406464", profiles).id == "ms41.2"
-    assert match_profile("SHINDE1", profiles).id == "ms41.2"
+    # SHINDE1 (MS41.3 custom firmware) has its own profile: MS41.2's map plus
+    # the wideband channels that only exist in that firmware.
+    assert match_profile("SHINDE1", profiles).id == "ms41.3-shinde1"
+    assert profiles["ms41.3-shinde1"].param("wb_afr").addr == 0xE800
 
 
 def test_match_falls_back_to_generic(profiles):
     assert match_profile("9999999", profiles).id == "ms41-generic"
+
+
+def test_unsourced_ecu_ids_fall_back_to_generic(profiles):
+    # SP-Daten lists these as MS41 HW-NRs, but no source publishes a RAM map for
+    # them. They must NOT inherit a sibling's variant-specific addresses —
+    # generic's common-only block is the honest answer (research/profile-scrape.md §4).
+    for ecu_id in ("1427703", "7505858", "1437804"):
+        assert match_profile(ecu_id, profiles).id == "ms41-generic"
+
+
+def test_common_block_agrees_across_every_profile(profiles):
+    # The §3.6.1 addresses are the same on every documented MS41 ECU ID; any
+    # future profile that disagrees is a transcription error.
+    baseline = {p.name: (p.addr, p.size, p.formula) for p in profiles["ms41-generic"].params}
+    for profile in profiles.values():
+        for p in profile.params:
+            if p.name in baseline and p.name != "tps":
+                assert (p.addr, p.size, p.formula) == baseline[p.name], f"{profile.id}:{p.name}"
+
+
+def test_variant_specific_addresses_differ_as_sourced(profiles):
+    # The three documented MS41 columns really are three different maps.
+    assert profiles["ms41.0"].param("injector_pw").addr == 0xECBC
+    assert profiles["ms41.1"].param("injector_pw").addr == 0xEF96
+    assert profiles["ms41.2"].param("injector_pw").addr == 0xEF7E
+    # ds2.py's batch table scrape: 1432401/1438137 ride the MS41.0 column,
+    # 1438068 the MS41.1 column — each listed under its own ECU ID.
+    assert profiles["ms41.0-1432401"].param("battery").addr == 0xFB47
+    assert profiles["ms41.0-1438137"].param("battery").addr == 0xFB47
+    assert profiles["ms41.1-1438068"].param("battery").addr == 0xFC9D
+    # the high-byte-only short-trim form the batch table documents
+    assert profiles["ms41.0-1432401"].param("stft_b1_hi").addr == 0xED5C + 1
+    assert profiles["ms41.1-1438068"].param("stft_b1_hi").addr == 0xF036 + 1
+
+
+def test_common_only_profiles_omit_variant_params(profiles):
+    # 1405854 / 1440176 appear only in the logger XML's shared ECU-ID lists, so
+    # they get the common block and nothing that moves between variants.
+    for pid in ("ms41.0-1405854", "ms41.0-1440176"):
+        names = {p.name for p in profiles[pid].params}
+        assert "rpm" in names and "coolant_temp" in names
+        for variant_only in ("tps", "injector_pw", "stft_b1", "ltft_b1", "load", "battery"):
+            assert variant_only not in names, f"{pid}:{variant_only}"
 
 
 def test_unknown_ecu_id_falls_back_to_generic(profiles):
