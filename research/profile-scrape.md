@@ -29,6 +29,27 @@ addresses from where*.
 The BimmerStein repo is GPL-3.0; e36cli is GPL-3.0; deriving profile data from
 it is fine and the provenance strings name it.
 
+### 1.1 Not yet checked — open work
+
+A parallel web sweep of three further candidate sources was started and did
+**not** return within this pass, so they remain genuinely unexamined rather
+than examined-and-empty. Do not read §6's "no source found" as covering them:
+
+- `nyetwurk/openms41` and sibling openms41 repos — the lineage behind the
+  SS1v2 / `SHINDE1` firmware. Most likely place to find more `SHINDE1`
+  channels, or a second opinion on the MS41.2 column.
+- RomRaider's upstream BMW/DS2 definition files. The BimmerStein XML is in
+  RomRaider's logger format and `ms41-data.md` §3.6 notes its parameter IDs
+  (`P8`, `E217`, …) line up with RomRaider's `DS2Parameter.java`, so upstream
+  plausibly carries ECU IDs BimmerStein dropped.
+- ms4x.net wiki (MS41 pages, DS2 protocol, Logger.S). `ms41-data.md` §3.8
+  already cites Logger.S for the MS4x rate claim; the MS41 pages themselves
+  have not been mined for addresses.
+
+Priority if someone picks this up: openms41 first (most likely to be
+non-empty), then RomRaider upstream. The three ECU IDs that would most benefit
+are `1427703`, `7505858` and `1437804` — the ones demoted to generic in §4.
+
 ## 2. Per-ECU-ID inventory
 
 Legend: **XML-common** = the 16 channels the logger XML lists for that ECU ID in
@@ -189,7 +210,8 @@ with **no addresses**: MS42 = `7500255`, `7505859`, `7526753`; MS43 =
 MS41/MS42/MS43. Of the candidate IDs in the directive, `1429764`, `1430844` and
 `7519308` appear **nowhere** in the repo. **No RAM parameter map for any
 MS42/MS43 ECU ID was found in any consulted source**, so there is nothing to
-encode even if the command scheme matched.
+encode even if the command scheme matched. (Caveat: "consulted" means the
+sources in §1; the three in §1.1 were not reached.)
 
 Separately, `ms41-data.md` §3.8 already records that MS4x live logging is a
 different animal: the Logger.S project reports up to 33 Hz on MS42/MS43 because
