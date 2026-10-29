@@ -141,7 +141,7 @@ def test_set_ftdi_latency_already_set(tmp_path, monkeypatch):
 
 def test_flush_input_wraps_non_oserror_as_transport_error():
     """termios.error (not an OSError) must not escape flush_input (seen live
-    when the USB device vanished mid-session, research/1429373-probe.md)."""
+    when the USB device vanished mid-session, car/research/1429373-probe.md)."""
     import pytest
 
     from e36cli.transport import SerialTransport, TransportError

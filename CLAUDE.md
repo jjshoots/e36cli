@@ -10,6 +10,8 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
 2. `research/` — sourced protocol/data findings with confidence markers.
    Treat [low] confidence facts as hypotheses to verify on the car.
 3. `GARAGE.md` — what to do when the laptop is plugged into the car.
+4. `car/README.md` — the owner's car: identity, faults, diagnosis; `car/log.md`
+   is the session log. Everything car-specific lives under `car/`.
 
 ## Ground rules learned from planning (don't re-derive)
 
@@ -27,7 +29,8 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
 - `uv run e36 --sim live` etc. — every command works against the simulator.
 - Real car: follow GARAGE.md; raw probing via `uv run e36 raw ...`.
 - Captures land in `~/.local/share/e36cli/captures/`; copy interesting ones
-  into `tests/fixtures/` as goldens.
+  into `car/captures/` as goldens — **redact the ident serial first** (zeroed
+  with recomputed checksum; a test enforces it, see car/README.md).
 - Lint/format is ruff via pre-commit (`uvx ruff check --fix` + `uvx ruff format`,
   config in pyproject). CI (.github/workflows/ci.yml) enforces lint + tests on
   3.11/3.12 + wheel smoke-test, and must stay green.
@@ -53,7 +56,7 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   verified at idle and promoted (`verified_source` cites the capture); DTC
   record layout + hours-counter ages confirmed byte-exact (research §4.2 note;
   responses carry a trailing pad byte). Real captures are replay goldens in
-  tests/fixtures/ (car-ident/car-dtc/car-live-once) with CLI replay tests.
+  car/captures/ (car-ident/car-dtc/car-live-once) with CLI replay tests.
   Hard lesson: **the K-line is single-master** — a second e36 process on the
   port steals bytes; SerialTransport now opens with exclusive=true.
   Car's stored faults: 217 (EGS CAN), 25 (lambda heater B1), 52 (exhaust flap)
@@ -73,7 +76,7 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   of the auto-donor ECU in (probably) a manual car — it will re-store after
   every clear.
 - 2026-10-25 (night): **live RAM probe of 1429373 succeeded** — see
-  research/1429373-probe.md. Trim block = 1429861 layout exactly (injPW
+  car/research/1429373-probe.md. Trim block = 1429861 layout exactly (injPW
   0xECBC, STFT 0xED5C/0xED96, LTFT 0xED6E/0xEDA8, additive 0xED66/0xEDA0);
   battery = 0xFB45 (1429861 − 2), VERIFIED at 14.0–14.4 V running; several
   documented scalings are wrong for this program (hypotheses in the profile).
@@ -116,8 +119,8 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   `reconnect` events into the same file, `--no-reconnect`, rows flushed as
   written. 264 tests. Real drop → reconnect not yet seen on the car.
 - 2026-10-29: **garage session 3 — cold start → warm-up → rev test**, all
-  read-only; findings in research/session3-coldstart.md, goldens
-  tests/fixtures/car-koeo-{ident,dtc,live-all,scan}.jsonl + car-coldstart.csv
+  read-only; findings in car/research/session3-coldstart.md, goldens
+  car/captures/car-koeo-{ident,dtc,live-all,scan}.jsonl + car-coldstart.csv
   + car-revtest.csv (3 new replay tests). Faults unchanged (217/25/52, hours
   counter advancing). KOEO 30 °C coolant≈IAT (low-end temp scaling OK);
   battery 11.62 V KOEO / 9.99 crank / ~14.2 running → alternator fine, battery

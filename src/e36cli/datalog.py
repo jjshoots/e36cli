@@ -1,6 +1,6 @@
 """`e36 log` engine: per-row-flushed sample writer + burst/reconnect loop.
 
-Field facts behind this module (research/session3-coldstart.md §2): the
+Field facts behind this module (car/research/session3-coldstart.md §2): the
 FT232RL drops mid-stream with pyserial's "device reports readiness to read but
 returned no data", the device node vanishes and re-enumerates (same or a new
 /dev/ttyUSBn) or stays gone until replugged; bursts of 40 samples with a fresh

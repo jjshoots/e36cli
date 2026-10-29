@@ -599,7 +599,7 @@ def _sia_countdown(seconds: float) -> None:
 
 
 LOG_EPILOG = (
-    "Resilience (FTDI drops, research/session3-coldstart.md §2): by default the "
+    "Resilience (FTDI drops, car/research/session3-coldstart.md §2): by default the "
     "port is closed and reopened every --burst samples (40), which kept the "
     "KKL cable alive where continuous streaming killed it. On a link error the "
     "logger warns on stderr, closes the port, waits for the device node to come "

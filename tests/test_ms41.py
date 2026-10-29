@@ -194,7 +194,7 @@ def test_unsourced_ecu_ids_fall_back_to_generic(profiles):
 
 
 # Scalings measured on the car to differ from the documented common block
-# (research/session3-coldstart.md §4); addresses and sizes still must agree.
+# (car/research/session3-coldstart.md §4); addresses and sizes still must agree.
 CAR_MEASURED_SCALINGS = {
     ("ms41.0-1429373", "knock_retard_global"),
     ("ms41.0-1429373", "o2_front_b1"),

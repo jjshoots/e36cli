@@ -210,7 +210,7 @@ def test_live_once_table_shows_faults(monkeypatch):
 def test_live_once_fault_read_failure_is_nonfatal():
     # The real-car capture has no DTC exchange: replay serves silence for the
     # fault read, which must NOT break the snapshot (explicit SPEC behavior).
-    fixture = Path(__file__).parent / "fixtures" / "car-live-once.jsonl"
+    fixture = Path(__file__).parents[1] / "car" / "captures" / "car-live-once.jsonl"
     result = invoke(
         "--sim-fixture",
         str(fixture),

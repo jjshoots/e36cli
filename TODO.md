@@ -1,7 +1,7 @@
 # TODO
 
 Ordered by priority. Sources: garage session 3 (2026-10-29), write-up in
-`research/session3-coldstart.md`; captures cited there. Remember: never mark a
+`car/research/session3-coldstart.md`; captures cited there. Remember: never mark a
 profile param `verified = true` without a capture to point at, and profile
 scaling changes come with tests.
 
@@ -44,7 +44,7 @@ scaling changes come with tests.
       (`88 36 22 77 02 01 01 FF 02 96 06 01`), as did GM 0x00
       (`88 36 94 82 14 03 02 00 31 95 02 13`); both are already in the scan
       table. IKE 0x80 / ABS 0x56 stayed silent, so keep those. Ident-only,
-      never write (SPEC hard rule). Golden: `tests/fixtures/car-koeo-scan.jsonl`.
+      never write (SPEC hard rule). Golden: `car/captures/car-koeo-scan.jsonl`.
 
 ## Profile `ms41.0-1429373` (each change with tests; see research note §4)
 
@@ -69,14 +69,4 @@ coolant/IAT `verified_source` extended to the cold KOEO capture.
 - [ ] **(Optional) mark O2 front params `core = true`** once the scaling is
       trusted.
 
-## Owner, physical (no laptop needed)
-
-- [ ] **Bank 1 O2 connector check.** O2 B1 flat at 4.87–4.90 V at every
-      rpm/temperature/throttle, STFT B1 0, integrator static, plus DTC 25
-      (heater open circuit) → one break taking out signal and heater. Check
-      the B1 sensor connector first (decat/exhaust work), then heater
-      resistance and the 12 V heater feed.
-- [ ] **Multimeter battery check.** DME read 11.62 V KOEO (every sample),
-      9.99 V cranking, 13.15–14.38 V running (alternator fine). Measure at
-      the terminals with the engine off and settled: ~11.6 V → battery
-      weak/discharged; ~12.5 V → 0xFB45 scaling is off at the low end.
+Owner-side physical checks for the car: `car/README.md`.

@@ -161,8 +161,8 @@ unchanged.
   property tests (round-trip encode/decode, checksum, hypothesis if cheap),
   transport matrix vs fault-injecting sim, CLI integration tests via
   `typer.testing.CliRunner` with `--sim` covering EVERY command in the table.
-- Fixtures in `tests/fixtures/`: hand-built frames now; real captures get added
-  after the first garage session and become regression goldens.
+- Real captures from the car live in `car/captures/` and are the replay
+  regression goldens (ident serial redacted).
 
 ## Layout
 
@@ -171,6 +171,7 @@ pyproject.toml            # uv-managed; console script `e36`
 SPEC.md                   # this file
 CLAUDE.md                 # agent spin-up notes
 GARAGE.md                 # scripted live-session protocol
+car/                      # the owner's car: dossier, session log, captures, findings
 research/                 # sourced findings (ds2-protocol.md, ms41-data.md)
 data/profiles/*.toml      # per-SW-version param maps (package data)
 data/dtc_ms41.toml
@@ -193,7 +194,7 @@ No async framework — the wire is 960 B/s; threads suffice.
 - [x] Verified-on-car markers — garage session 1 (2026-10-25) verified the 8
       core physics params (rpm, maf, iat, coolant, vss, ignition, vanos, tps)
       on ECU 1429373; promoted in ms41.0-1429373 + ms41-generic profiles with
-      `verified_source` citing tests/fixtures/car-live-once.jsonl (ignition
+      `verified_source` citing car/captures/car-live-once.jsonl (ignition
       0xE989 later demoted: static on this ECU, session 3). DTC record
       layout + hours counter also confirmed (research §4.2). Still unverified:
       the other common params (O2 ADCs, knock, idle valve, state bits) and all

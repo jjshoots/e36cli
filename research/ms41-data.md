@@ -574,7 +574,7 @@ Empty-DTC edge case: a stock MS41 returns payload `00 00` (count 0 plus a pad by
 
 ### 4.2 Record layout
 
-> **[verified on car 2026-10-25]** (ECU 1429373, tests/fixtures/car-dtc.jsonl):
+> **[verified on car 2026-10-25]** (ECU 1429373, car/captures/car-dtc.jsonl):
 > `04 01` answered with count=3 then 3 × 10-byte records exactly as below, plus
 > **one trailing pad byte** (0x74) — payload length 31 is NOT a multiple of the
 > record size; decoders must tolerate the tail. Codes 217/25/52, status

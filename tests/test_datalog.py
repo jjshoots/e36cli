@@ -415,7 +415,7 @@ def test_log_sim_replay_link_error_stays_fatal(tmp_path, monkeypatch):
         raise AssertionError("sim must never wait for a device node")
 
     monkeypatch.setattr(datalog, "find_port", no_waiting)
-    fixture = Path(__file__).parent / "fixtures" / "car-ident.jsonl"
+    fixture = Path(__file__).parents[1] / "car" / "captures" / "car-ident.jsonl"
     out = tmp_path / "r.csv"
     result = invoke("--sim-fixture", str(fixture), "log", str(out), "--samples", "2")
     assert result.exit_code == 1, result.output

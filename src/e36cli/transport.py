@@ -115,7 +115,7 @@ class SerialTransport:
             self._ser.reset_input_buffer()
         except Exception as exc:  # termios.error is NOT an OSError: it escapes
             # the OSError wrappers when the USB device vanishes mid-session
-            # (seen live 2026-10-25, research/1429373-probe.md)
+            # (seen live 2026-10-25, car/research/1429373-probe.md)
             raise TransportError(f"{self.port}: {exc}") from exc
 
     def close(self) -> None:

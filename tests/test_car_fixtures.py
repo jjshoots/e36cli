@@ -1,4 +1,4 @@
-"""Replay-golden tests against real captures from the car (garage session 1,
+"""Replay-golden tests against real captures from the car in car/ (session 1,
 2026-10-25, E36 M52B25 with ECU ID 1429373, engine idling).
 
 These are the ground-truth regression tests: the fixture bytes came off the
@@ -21,7 +21,7 @@ from e36cli.capture import CaptureReader
 from e36cli.cli import CAPTURE_DIR_ENV, app
 from e36cli.ms41 import load_profiles
 
-FIXTURES = Path(__file__).parent / "fixtures"
+FIXTURES = Path(__file__).parents[1] / "car" / "captures"
 
 runner = CliRunner()
 
@@ -123,7 +123,7 @@ def test_car_live_once_table_has_no_unverified_marker_on_promoted_params():
     assert "?" not in rpm_line
 
 
-# --- garage session 3, 2026-10-29: key on, engine off, cold (research/session3-coldstart.md)
+# --- garage session 3, 2026-10-29: key on, engine off, cold (car/research/session3-coldstart.md)
 
 
 def koeo_replayable_params() -> str:
@@ -160,7 +160,7 @@ def test_car_koeo_live_all_cold_engine_off():
     # stft both banks parked at the 0x8000 zero point with the engine off
     assert p["stft_b1"]["raw"] == 32768
     assert p["stft_b2"]["raw"] == 32768
-    # session-3 profile corrections (research/session3-coldstart.md §4)
+    # session-3 profile corrections (car/research/session3-coldstart.md §4)
     assert p["ignition_angle"]["raw"] == 0  # 0xE98D: nothing computed engine off
     assert p["knock_retard_global"]["value"] == 0.0  # raw 0 = no retard
     # front O2 inverted ADC span: both banks rest near the lean rail (~4.89 "V")
@@ -226,3 +226,18 @@ def test_coldstart_load_scaling_tracks_maf_per_stroke():
     assert len(ratios) > 40
     assert statistics.median(ratios) == pytest.approx(1.0, abs=0.05)
     assert all(0.85 < x < 1.2 for x in ratios)
+
+
+def test_car_captures_have_redacted_serial():
+    """The DME ident serial (payload bytes 33..42; its tail is taken to be the
+    EWS ISN) must be zeroed in every committed capture — see car/README.md."""
+    idents = 0
+    for path in FIXTURES.glob("*.jsonl"):
+        rx = b"".join(e.data for e in CaptureReader(path).events if e.dir == "rx")
+        start = rx.find(b"\x12\x2e\xa0")
+        while start >= 0:
+            frame = rx[start : start + 0x2E]
+            assert frame[3 + 33 : 3 + 42] == b"000000000", path.name
+            idents += 1
+            start = rx.find(b"\x12\x2e\xa0", start + 1)
+    assert idents >= 6
