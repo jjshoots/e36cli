@@ -173,19 +173,46 @@ def data_dir() -> Path:
     raise ProfileError("e36cli data directory not found (package data missing?)")
 
 
+# Every key a profile TOML may use, per level (STANDARDS STD-09). Anything else
+# is a typo (`sigend`, `verifed`) that would otherwise be silently dropped.
+_DOC_KEYS = frozenset({"profile", "param"})
+_PROFILE_KEYS = frozenset({"id", "description", "match_hw"})
+_PARAM_REQUIRED = frozenset({"name", "addr", "size", "source", "verified"})
+_PARAM_KEYS = _PARAM_REQUIRED | {
+    "label",
+    "unit",
+    "formula",
+    "verified_source",
+    "signed",
+    "endian",
+    "mask",
+    "core",
+}
+
+
+def _check_keys(table: dict, allowed: frozenset[str], required: frozenset[str]) -> None:
+    unknown = sorted(set(table) - allowed)
+    if unknown:
+        raise ValueError(f"unknown key(s) {unknown} (allowed: {sorted(allowed)})")
+    missing = sorted(required - set(table))
+    if missing:
+        raise ValueError(f"missing required key(s) {missing}")
+
+
 def _load_profile_file(path: Path) -> Profile:
-    with path.open("rb") as fh:
-        doc = tomllib.load(fh)
     try:
-        head = doc["profile"]
-        pid = head["id"]
-        desc = head["description"]
-    except KeyError as exc:
-        raise ProfileError(f"{path.name}: missing [profile] field {exc}") from exc
+        with path.open("rb") as fh:
+            doc = tomllib.load(fh)
+    except (OSError, tomllib.TOMLDecodeError) as exc:
+        raise ProfileError(f"{path.name}: {exc}") from exc
+    try:
+        pid, desc, match_hw, entries = _validate_doc(doc)
+    except ValueError as exc:
+        raise ProfileError(f"{path.name}: {exc}") from exc
 
     params: list[ParamSpec] = []
     seen: set[str] = set()
-    for entry in doc.get("param", []):
+    for entry in entries:
         try:
             spec = _validate_param(entry)
         except (KeyError, ValueError, TypeError) as exc:
@@ -198,18 +225,47 @@ def _load_profile_file(path: Path) -> Profile:
     return Profile(
         id=pid,
         description=desc,
-        match_hw=tuple(head.get("match_hw", [])),
+        match_hw=match_hw,
         params=tuple(params),
         source_file=str(path),
     )
+
+
+def _validate_doc(doc: dict) -> tuple[str, str, tuple[str, ...], list[dict]]:
+    """Check the document shape and [profile] table; params are checked one by one."""
+    _check_keys(doc, _DOC_KEYS, frozenset({"profile"}))
+    head = doc["profile"]
+    if not isinstance(head, dict):
+        raise ValueError(f"[profile] must be a table, got {head!r}")
+    try:
+        _check_keys(head, _PROFILE_KEYS, _PROFILE_KEYS)
+    except ValueError as exc:
+        raise ValueError(f"[profile]: {exc}") from exc
+    pid, desc, match_hw = head["id"], head["description"], head["match_hw"]
+    if not isinstance(pid, str) or not pid:
+        raise ValueError(f"[profile] id must be a non-empty string, got {pid!r}")
+    if not isinstance(desc, str):
+        raise ValueError(f"[profile] description must be a string, got {desc!r}")
+    # A bare string would iterate as characters and never match an ECU id.
+    if not isinstance(match_hw, list) or not all(isinstance(h, str) and h for h in match_hw):
+        raise ValueError(f"[profile] match_hw must be a list of non-empty strings, got {match_hw!r}")
+    entries = doc.get("param", [])
+    if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
+        raise ValueError("param must be an array of tables ([[param]]), not a table or value")
+    return pid, desc, tuple(match_hw), entries
 
 
 def _is_int(v: object) -> bool:
     return isinstance(v, int) and not isinstance(v, bool)
 
 
+def _is_text(v: object) -> bool:
+    return isinstance(v, str) and bool(v.strip())
+
+
 def _validate_param(entry: dict) -> ParamSpec:
     """Build + fully validate one ParamSpec; every defect raises at load time."""
+    _check_keys(entry, _PARAM_KEYS, _PARAM_REQUIRED)
     spec = ParamSpec(
         name=entry["name"],
         label=entry.get("label", entry["name"]),
@@ -217,8 +273,8 @@ def _validate_param(entry: dict) -> ParamSpec:
         addr=entry["addr"],
         size=entry["size"],
         formula=entry.get("formula", "x"),
-        source=entry.get("source", ""),
-        verified=entry.get("verified", False),
+        source=entry["source"],
+        verified=entry["verified"],
         verified_source=entry.get("verified_source", ""),
         signed=entry.get("signed", False),
         endian=entry.get("endian", "little"),
@@ -227,6 +283,11 @@ def _validate_param(entry: dict) -> ParamSpec:
     )
     if not isinstance(spec.name, str) or not spec.name:
         raise ValueError("name must be a non-empty string")
+    for key in ("label", "unit", "formula"):
+        if not isinstance(getattr(spec, key), str):
+            raise ValueError(f"{key} must be a string, got {getattr(spec, key)!r}")
+    if not _is_text(spec.source):
+        raise ValueError(f"source must be a non-empty string (SPEC invariant 3), got {spec.source!r}")
     if not _is_int(spec.addr) or not 0 <= spec.addr <= 0xFFFFFF:
         raise ValueError(f"addr must be a 24-bit integer, got {spec.addr!r}")
     if not _is_int(spec.size) or spec.size not in (1, 2, 4):
@@ -241,8 +302,8 @@ def _validate_param(entry: dict) -> ParamSpec:
         raise ValueError("signed/verified/core must be booleans")
     if not isinstance(spec.verified_source, str):
         raise ValueError(f"verified_source must be a string, got {spec.verified_source!r}")
-    if spec.verified and not spec.verified_source:
-        raise ValueError("verified = true requires verified_source (SPEC invariant 3)")
+    if spec.verified and not _is_text(spec.verified_source):
+        raise ValueError("verified = true requires a non-empty verified_source (SPEC invariant 3)")
     fn = compile_formula(spec.formula)  # FormulaError is a ValueError
     # Probe the compiled formula over the raw range so bad arithmetic
     # (x / 0, overflow to inf) fails at load, not mid-poll.

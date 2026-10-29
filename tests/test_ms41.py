@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import tomllib
+
 import pytest
 from hypothesis import given
 from hypothesis import strategies as st
@@ -370,13 +372,22 @@ def test_trim_formula_midpoint(profiles):
 # --- load-time profile validation (review finding #4) -------------------------
 
 
+# Minimal valid pieces; each negative case breaks exactly one rule so the
+# test pins the branch it names, not whichever check happens to run first.
+HEAD = '[profile]\nid = "t"\ndescription = "t"\nmatch_hw = ["0000000"]\n\n'
+PARAM = 'name = "p"\naddr = 0xDA2A\nsize = 1\nsource = "test"\nverified = false\n'
+
+
 def _profile_toml(tmp_path, param_lines: str):
-    text = (
-        '[profile]\nid = "t"\ndescription = "t"\nmatch_hw = ["0000000"]\n\n'
-        '[[param]]\nname = "p"\naddr = 0xDA2A\nsize = 1\n' + param_lines
-    )
-    (tmp_path / "t.toml").write_text(text)
+    (tmp_path / "t.toml").write_text(HEAD + "[[param]]\n" + PARAM + param_lines)
     return tmp_path
+
+
+def test_minimal_profile_toml_is_valid(tmp_path):
+    # Guards the fixtures above: if this fails, every negative case is moot.
+    (profile,) = ms41.load_profiles(_profile_toml(tmp_path, "")).values()
+    assert profile.match_hw == ("0000000",)
+    assert profile.param("p").source == "test"
 
 
 @pytest.mark.parametrize(
@@ -395,14 +406,164 @@ def test_bad_param_fields_raise_profile_error_at_load(tmp_path, lines):
         ms41.load_profiles(_profile_toml(tmp_path, lines))
 
 
-def test_bad_addr_type_raises_profile_error(tmp_path):
-    text = (
-        '[profile]\nid = "t"\ndescription = "t"\n\n'
-        '[[param]]\nname = "p"\naddr = "0xDA2A"\nsize = 1\n'
-    )
+def _replace_param_key(key: str, value: str) -> str:
+    """PARAM with `key` set to `value` (an empty value drops the key)."""
+    lines = [ln for ln in PARAM.splitlines() if not ln.startswith(f"{key} =")]
+    if value:
+        lines.append(f"{key} = {value}")
+    return HEAD + "[[param]]\n" + "\n".join(lines) + "\n"
+
+
+# One case per `raise` in the strict loader (STANDARDS STD-09 / STD-04):
+# (TOML text, regex the ProfileError message must match). Every message must
+# also name the file, which the test checks separately.
+STRICT_CASES = {
+    "toml-syntax": ("[profile\n", r"t\.toml: "),
+    "top-level-unknown-key": (
+        "version = 1\n" + HEAD + "[[param]]\n" + PARAM,
+        r"unknown key.*'version'",
+    ),
+    "missing-profile-table": ("[[param]]\n" + PARAM, r"missing required key.*'profile'"),
+    "profile-not-a-table": (
+        'profile = "ms41"\n[[param]]\n' + PARAM,
+        r"\[profile\] must be a table",
+    ),
+    "profile-unknown-key": (
+        HEAD.replace("match_hw", "matchhw") + "[[param]]\n" + PARAM,
+        r"\[profile\]: unknown key.*'matchhw'",
+    ),
+    "profile-missing-key": (
+        HEAD.replace('match_hw = ["0000000"]\n', "") + "[[param]]\n" + PARAM,
+        r"\[profile\]: missing required key.*'match_hw'",
+    ),
+    "profile-id-empty": (
+        HEAD.replace('id = "t"', 'id = ""') + "[[param]]\n" + PARAM,
+        r"id must be a non-empty",
+    ),
+    "profile-description-not-str": (
+        HEAD.replace('description = "t"', "description = 1") + "[[param]]\n" + PARAM,
+        r"description must be a string",
+    ),
+    "match-hw-bare-string": (
+        HEAD.replace('["0000000"]', '"1429373"') + "[[param]]\n" + PARAM,
+        r"match_hw must be a list of non-empty strings, got '1429373'",
+    ),
+    "match-hw-int-items": (
+        HEAD.replace('["0000000"]', "[1429373]") + "[[param]]\n" + PARAM,
+        r"match_hw must be a list of non-empty strings",
+    ),
+    "param-as-table": (HEAD + "[param]\n" + PARAM, r"param must be an array of tables"),
+    "param-array-of-non-tables": ("param = [1]\n" + HEAD, r"param must be an array of tables"),
+    "param-typo-sigend": (
+        _replace_param_key("sigend", "true"),
+        r"param 'p': unknown key.*'sigend'",
+    ),
+    "param-typo-verifed": (
+        _replace_param_key("verifed", "true"),
+        r"param 'p': unknown key.*'verifed'",
+    ),
+    "param-missing-source": (
+        _replace_param_key("source", ""),
+        r"param 'p': missing required key.*'source'",
+    ),
+    "param-missing-verified": (
+        _replace_param_key("verified", ""),
+        r"param 'p': missing required key.*'verified'",
+    ),
+    "param-name-empty": (_replace_param_key("name", '""'), r"name must be a non-empty string"),
+    "param-label-not-str": (_replace_param_key("label", "5"), r"label must be a string"),
+    "param-unit-not-str": (_replace_param_key("unit", "[]"), r"unit must be a string"),
+    "param-formula-not-str": (_replace_param_key("formula", "2"), r"formula must be a string"),
+    "param-source-empty": (
+        _replace_param_key("source", '""'),
+        r"source must be a non-empty string",
+    ),
+    "param-source-blank": (
+        _replace_param_key("source", '"  "'),
+        r"source must be a non-empty string",
+    ),
+    "param-source-not-str": (
+        _replace_param_key("source", "1"),
+        r"source must be a non-empty string",
+    ),
+    "param-addr-not-int": (
+        _replace_param_key("addr", '"0xDA2A"'),
+        r"addr must be a 24-bit integer",
+    ),
+    "param-addr-too-big": (
+        _replace_param_key("addr", "0x1000000"),
+        r"addr must be a 24-bit integer",
+    ),
+    "param-size-3": (_replace_param_key("size", "3"), r"size must be 1, 2, or 4"),
+    "param-formula-overflows": (
+        _replace_param_key("formula", '"x * 1e308 * 10"'),
+        r"formula .* is non-finite at x=1\.0",
+    ),
+    "param-verified-not-bool": (_replace_param_key("verified", '"yes"'), r"must be booleans"),
+    "param-core-not-bool": (_replace_param_key("core", "1"), r"must be booleans"),
+    "param-verified-source-not-str": (
+        _replace_param_key("verified_source", "1"),
+        r"verified_source must be a string",
+    ),
+    "param-verified-without-source": (
+        _replace_param_key("verified", "true"),
+        r"verified = true requires a non-empty verified_source",
+    ),
+    "param-verified-blank-source": (
+        _replace_param_key("verified", 'true\nverified_source = " "'),
+        r"verified = true requires a non-empty verified_source",
+    ),
+    "param-duplicate": (
+        HEAD + "[[param]]\n" + PARAM + "[[param]]\n" + PARAM,
+        r"duplicate param 'p'",
+    ),
+}
+
+
+@pytest.mark.parametrize("text, message", list(STRICT_CASES.values()), ids=list(STRICT_CASES))
+def test_strict_loader_rejects(tmp_path, text, message):
     (tmp_path / "t.toml").write_text(text)
-    with pytest.raises(ms41.ProfileError):
+    with pytest.raises(ms41.ProfileError, match=message) as info:
         ms41.load_profiles(tmp_path)
+    assert str(info.value).startswith("t.toml: ")
+
+
+def test_duplicate_profile_id_rejected(tmp_path):
+    for name in ("a.toml", "b.toml"):
+        (tmp_path / name).write_text(HEAD + "[[param]]\n" + PARAM)
+    with pytest.raises(ms41.ProfileError, match=r"duplicate profile id 't' in b\.toml"):
+        ms41.load_profiles(tmp_path)
+
+
+def test_empty_profile_directory_rejected(tmp_path):
+    with pytest.raises(ms41.ProfileError, match="no profiles found"):
+        ms41.load_profiles(tmp_path)
+
+
+def test_unreadable_profile_raises_profile_error(tmp_path):
+    # A directory matching *.toml: open() raises IsADirectoryError (an OSError).
+    (tmp_path / "t.toml").mkdir()
+    with pytest.raises(ms41.ProfileError, match=r"^t\.toml: ") as info:
+        ms41.load_profiles(tmp_path)
+    assert isinstance(info.value.__cause__, OSError)
+
+
+def test_toml_syntax_error_is_chained(tmp_path):
+    (tmp_path / "t.toml").write_text("[profile\n")
+    with pytest.raises(ms41.ProfileError) as info:
+        ms41.load_profiles(tmp_path)
+    assert isinstance(info.value.__cause__, tomllib.TOMLDecodeError)
+
+
+@pytest.mark.parametrize(
+    "path",
+    sorted((ms41.data_dir() / "profiles").glob("*.toml")),
+    ids=lambda path: path.name,
+)
+def test_every_shipped_profile_loads_strictly(path):
+    profile = ms41._load_profile_file(path)
+    assert profile.params, path.name
+    assert all(p.source.strip() for p in profile.params), path.name
 
 
 def test_decode_length_mismatch_is_typed(profiles):
