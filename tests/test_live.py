@@ -172,3 +172,72 @@ def test_select_names_precedence():
     assert live.select_names(p, True, None) is None
     core = live.select_names(p, False, None)
     assert core == [s.name for s in p.core_params]
+
+
+# --- lifecycle guarantees (STANDARDS.md STD-05/06/13) ------------------------
+
+
+class ExplodingStore(live.LiveStore):
+    def update(self, values):
+        raise RuntimeError("store bug")
+
+
+def test_poller_crash_outside_the_poll_is_fatal_not_silent():
+    poller = live.Poller(make_client(), profile(), ExplodingStore(), rate=0)
+    poller.start()
+    poller.join(timeout=5.0)
+    assert not poller.is_alive()
+    assert poller.fatal is not None and "store bug" in poller.fatal
+
+
+def test_run_session_raises_when_the_poller_dies():
+    import io
+
+    from rich.console import Console
+
+    store = ExplodingStore()
+    poller = live.Poller(make_client(), profile(), store, rate=0)
+    with pytest.raises(live.LiveFatal, match="store bug"):
+        live.run_session(poller, lambda: "frame", Console(file=io.StringIO()))
+    assert not poller.is_alive()
+
+
+def test_run_session_stops_and_joins_on_quit():
+    import io
+
+    from rich.console import Console
+
+    class QuitAfterTwo:
+        paused = False
+        quit = False
+        frames = 0
+
+        def handle_key(self, key):
+            pass
+
+    controller = QuitAfterTwo()
+    store = live.LiveStore()
+    poller = live.Poller(make_client(), profile(), store, rate=0)
+
+    def render():
+        controller.frames += 1
+        controller.quit = controller.frames > 2
+        return "frame"
+
+    live.run_session(poller, render, Console(file=io.StringIO()), controller=controller)
+    assert not poller.is_alive() and poller.fatal is None
+
+
+def test_poll_once_stops_before_the_next_query():
+    import threading
+
+    transport = SimTransport(SimulatedDME())
+    stop = threading.Event()
+    stop.set()
+    assert live.poll_once(ds2.DS2Client(transport, FAST), profile(), stop=stop) == {}
+    assert transport._n_requests == 0  # nothing went on the wire
+
+
+def test_join_timeout_covers_the_longest_uninterruptible_step():
+    # a fault poll: up to three SLOW queries on a sick link
+    assert 3 * ds2.SLOW.deadline * (ds2.SLOW.retries + 1) < live.JOIN_TIMEOUT_S

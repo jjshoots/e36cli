@@ -12,19 +12,16 @@ Keys: q quit · c clear faults (type y to confirm) · p pause rendering ·
 from __future__ import annotations
 
 import sys
-import termios
 import time
-import tty
 from collections import deque
 
 from rich.console import Console, Group, RenderableType
-from rich.live import Live
 from rich.panel import Panel
 from rich.table import Table
 from rich.text import Text
 
-from . import live, ms41
-from .panel import PanelController, _tty_keys
+from . import ds2, live, ms41
+from .panel import PanelController
 
 SPARK_GLYPHS = "▁▂▃▄▅▆▇█"
 
@@ -240,7 +237,7 @@ def render_screen(
 
 
 def run_dashboard_screen(
-    client,
+    client: ds2.DS2Client,
     profile: ms41.Profile,
     console: Console,
     port: str,
@@ -262,39 +259,19 @@ def run_dashboard_screen(
         client, profile, store, rate=rate, stats=stats, names=names, dtc_interval=dtc_interval
     )
     controller = DashboardController(poller, window=history, max_window=history)
-    poller.start()
-
     interactive = frames is None and sys.stdin.isatty()
-    old_attrs = None
-    if interactive:
-        old_attrs = termios.tcgetattr(sys.stdin.fileno())
-        tty.setcbreak(sys.stdin.fileno())
-    read_key = _tty_keys() if interactive else lambda: None
 
     def frame() -> RenderableType:
         return render_screen(
             profile, store, controller, stats, port, names, dtc_interval, console.size.width
         )
 
-    rendered = 0
-    try:
-        with Live(frame(), console=console, refresh_per_second=8, screen=interactive) as view:
-            while poller.is_alive() and not controller.quit:
-                time.sleep(0.125)
-                key = read_key()
-                if key:
-                    controller.handle_key(key)
-                if not controller.paused:
-                    view.update(frame())
-                rendered += 1
-                if frames is not None and rendered >= frames:
-                    break
-    except KeyboardInterrupt:
-        return
-    finally:
-        if old_attrs is not None:
-            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_attrs)
-        poller.stop()
-        poller.join(timeout=2.0)
-    if poller.fatal:
-        raise live.LiveFatal(poller.fatal)
+    live.run_session(
+        poller,
+        frame,
+        console,
+        controller=controller,
+        interactive=interactive,
+        frames=frames,
+        screen=interactive,
+    )

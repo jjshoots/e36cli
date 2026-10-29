@@ -8,18 +8,12 @@ single-master, so the panel never touches the wire directly.
 
 from __future__ import annotations
 
-import select
 import sys
-import termios
-import time
-import tty
-from collections.abc import Callable
 
 from rich.console import Console, Group, RenderableType
-from rich.live import Live
 from rich.text import Text
 
-from . import live, ms41
+from . import ds2, live, ms41
 
 # Only bits whose meaning research/ms41-data.md §3.6.1 documents are decoded;
 # everything else renders as raw hex. "closed throttle" is the INVERSE of
@@ -57,6 +51,7 @@ class PanelController:
         self.poller = poller
         self.state = "run"
         self.quit = False
+        self.paused = False  # the panel never pauses; run_session asks
 
     def handle_key(self, key: str) -> None:
         if self.state == "confirm":
@@ -114,19 +109,8 @@ def render_panel(
     return Group(*parts)
 
 
-def _tty_keys() -> Callable[[], str | None]:
-    """Non-blocking single-key reader for a cbreak-mode TTY."""
-
-    def read_key() -> str | None:
-        if select.select([sys.stdin], [], [], 0)[0]:
-            return sys.stdin.read(1)
-        return None
-
-    return read_key
-
-
 def run_panel(
-    client,
+    client: ds2.DS2Client,
     profile: ms41.Profile,
     ident: ms41.Ident | None,
     console: Console,
@@ -140,32 +124,10 @@ def run_panel(
         client, profile, store, rate=rate, stats=stats, names=None, dtc_interval=dtc_interval
     )
     controller = PanelController(poller)
-    poller.start()
-
-    interactive = sys.stdin.isatty()
-    old_attrs = None
-    if interactive:
-        old_attrs = termios.tcgetattr(sys.stdin.fileno())
-        tty.setcbreak(sys.stdin.fileno())
-    read_key = _tty_keys() if interactive else lambda: None
-    try:
-        with Live(
-            render_panel(profile, ident, store, controller, dtc_interval),
-            console=console,
-            refresh_per_second=8,
-        ) as view:
-            while poller.is_alive() and not controller.quit:
-                time.sleep(0.125)
-                key = read_key()
-                if key:
-                    controller.handle_key(key)
-                view.update(render_panel(profile, ident, store, controller, dtc_interval))
-    except KeyboardInterrupt:
-        return
-    finally:
-        if old_attrs is not None:
-            termios.tcsetattr(sys.stdin.fileno(), termios.TCSADRAIN, old_attrs)
-        poller.stop()
-        poller.join(timeout=2.0)
-    if poller.fatal:
-        raise live.LiveFatal(poller.fatal)
+    live.run_session(
+        poller,
+        lambda: render_panel(profile, ident, store, controller, dtc_interval),
+        console,
+        controller=controller,
+        interactive=sys.stdin.isatty(),
+    )

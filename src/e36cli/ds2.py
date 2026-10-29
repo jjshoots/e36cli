@@ -154,6 +154,10 @@ class Timing:
     busy_delay: float = 0.05  # wait before retrying after 0xA1 busy
     resync_budget: int = 64  # max bytes discarded while hunting a frame start
 
+    def worst_case_s(self) -> float:
+        """Longest one query can block: every attempt runs to its deadline."""
+        return (self.retries + 1) * (self.deadline + self.inter_frame_gap + self.busy_delay)
+
 
 # Timing presets observed in the field (research §1.4): fault reads and
 # especially clears are slow; everything else fits the default.

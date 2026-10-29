@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import time
 
+import pytest
 from typer.testing import CliRunner
 
 from e36cli import ds2, live, ms41
@@ -280,3 +281,13 @@ def test_dashboard_cli_all_params_and_history(tmp_path, monkeypatch):
     )
     assert result.exit_code == 0, result.output
     assert "stored fault" not in result.output
+
+
+@pytest.mark.parametrize("history", ["0", "-1"])
+def test_dashboard_rejects_nonpositive_history(history):
+    from typer.testing import CliRunner
+
+    from e36cli.cli import app
+
+    result = CliRunner().invoke(app, ["--sim", "dashboard", "--history", history, "--frames", "1"])
+    assert result.exit_code == 2  # usage error, before any poller exists

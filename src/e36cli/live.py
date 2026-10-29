@@ -7,10 +7,16 @@ frames never stall polling.
 
 from __future__ import annotations
 
+import select
+import sys
+import termios
 import threading
 import time
-from collections.abc import Callable
+import tty
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager
 from dataclasses import dataclass, field
+from typing import Protocol
 
 from rich.console import Console, Group, RenderableType
 from rich.live import Live
@@ -87,10 +93,17 @@ def poll_once(
     profile: ms41.Profile,
     reads: list[ms41.ReadRequest] | None = None,
     stats: TimingStats | None = None,
+    stop: threading.Event | None = None,
 ) -> dict[str, ms41.Value]:
-    """One full read of every profile param, batched per plan()."""
+    """One full read of every profile param, batched per plan().
+
+    If `stop` gets set, returns early with what was read so far: a stopping
+    poller must not start another query (STD-06).
+    """
     values: dict[str, ms41.Value] = {}
     for req in reads if reads is not None else plan(profile):
+        if stop is not None and stop.is_set():
+            return values
         t0 = time.monotonic()
         resp = client.query(
             ds2.ADDR["DME"], ms41.build_read_payload(req), max_response=req.count + 4
@@ -202,11 +215,19 @@ class Poller(threading.Thread):
         self._clear_requested = threading.Event()
 
     def run(self) -> None:
+        try:
+            self._loop()
+        except Exception as exc:  # thread boundary: never die silently (STD-06)
+            self._die(f"poller crashed: {exc!r}")
+
+    def _loop(self) -> None:
         consecutive = 0
         while not self.stop_event.is_set():
             start = time.monotonic()
             try:
-                values = poll_once(self.client, self.profile, self._plan, self.stats)
+                values = poll_once(
+                    self.client, self.profile, self._plan, self.stats, stop=self.stop_event
+                )
             except policy.POLL_TRANSIENT as exc:
                 # Transient wire trouble: keep polling, but not forever.
                 consecutive += 1
@@ -214,12 +235,11 @@ class Poller(threading.Thread):
                 if consecutive >= self.max_failures:
                     self._die(f"{consecutive} consecutive wire errors; last: {exc}")
                     return
-            except Exception as exc:  # programming/decode error: never spin on it
-                self._die(f"poller crashed: {exc!r}")
-                return
             else:
                 consecutive = 0
                 self.store.update(values)
+            if self.stop_event.is_set():
+                return
             if self._clear_requested.is_set():
                 self._clear_requested.clear()
                 self._do_clear()
@@ -235,10 +255,7 @@ class Poller(threading.Thread):
             faults, hours_now = dtcmod.fetch_faults(self.client)
         except policy.FAULT_POLL_NONFATAL as exc:
             self.store.set_faults_error(str(exc))
-        except Exception as exc:  # capture failure or a bug: fatal, as for params
-            self._die(f"fault poll crashed: {exc!r}")
-            self.stop_event.set()
-        else:
+        else:  # anything else (capture failure, bug) is fatal at run()'s boundary
             self.store.update_faults(faults, hours_now)
         self._next_dtc = self.clock() + self.dtc_interval
 
@@ -369,20 +386,102 @@ def run_dashboard(
     poller = Poller(
         client, profile, store, rate=rate, stats=stats, names=names, dtc_interval=dtc_interval
     )
-    poller.start()
-    try:
-        with Live(
-            render_dashboard(profile, store, names, dtc_interval),
-            console=console,
-            refresh_per_second=8,
-        ) as view:
-            while poller.is_alive():
-                time.sleep(0.125)
-                view.update(render_dashboard(profile, store, names, dtc_interval))
-    except KeyboardInterrupt:
+    run_session(poller, lambda: render_dashboard(profile, store, names, dtc_interval), console)
+
+
+# --- the one TUI session runner (live, panel, dashboard) — STD-13 ------------
+
+REFRESH_HZ = 8
+
+# Longest step a stopping poller can't interrupt: a fault poll is up to three
+# SLOW queries (read, NAK fallback, hours prepare), each running every retry to
+# its deadline on a sick link. Joining for less would close the port under it.
+JOIN_TIMEOUT_S = 3 * ds2.SLOW.worst_case_s() + 0.5
+
+
+class KeyController(Protocol):
+    """What run_session needs from a view's key handler."""
+
+    quit: bool
+    paused: bool
+
+    def handle_key(self, key: str) -> None: ...
+
+
+@contextmanager
+def tty_keys(enabled: bool) -> Iterator[Callable[[], str | None]]:
+    """Non-blocking single-key reader: stdin in cbreak mode, restored on every
+    exit path. Disabled (not a TTY, CI) it reads nothing."""
+    if not enabled:
+        yield lambda: None
         return
+    fd = sys.stdin.fileno()
+    old_attrs = termios.tcgetattr(fd)
+
+    def read_key() -> str | None:
+        if select.select([sys.stdin], [], [], 0)[0]:
+            return sys.stdin.read(1)
+        return None
+
+    try:
+        tty.setcbreak(fd)
+        yield read_key
     finally:
-        poller.stop()
-        poller.join(timeout=2.0)
+        termios.tcsetattr(fd, termios.TCSADRAIN, old_attrs)
+
+
+def run_session(
+    poller: Poller,
+    render: Callable[[], RenderableType],
+    console: Console,
+    *,
+    controller: KeyController | None = None,
+    interactive: bool = False,
+    frames: int | None = None,
+    screen: bool = False,
+) -> None:
+    """Run `poller` behind a Rich Live view until quit/Ctrl-C/poller death.
+
+    Owns the whole lifecycle (STD-05/06): the poller starts inside the guard,
+    is stopped and joined on every exit path, and a poller that ended on its
+    own always surfaces as LiveFatal (a non-zero exit), never a silent 0.
+    `frames` renders that many frames then returns (CI/testing).
+    """
+    interrupted = False
+    try:
+        poller.start()
+        with (
+            tty_keys(interactive) as read_key,
+            Live(render(), console=console, refresh_per_second=REFRESH_HZ, screen=screen) as view,
+        ):
+            rendered = 0
+            while poller.is_alive() and not (controller is not None and controller.quit):
+                time.sleep(1 / REFRESH_HZ)
+                key = read_key()
+                if key and controller is not None:
+                    controller.handle_key(key)
+                if controller is None or not controller.paused:
+                    view.update(render())
+                rendered += 1
+                if frames is not None and rendered >= frames:
+                    break
+    except KeyboardInterrupt:
+        interrupted = True
+    finally:
+        died = poller.ident is not None and not poller.is_alive() and not poller.stop_event.is_set()
+        _stop_and_join(poller)
+    if interrupted:
+        return
     if poller.fatal:
         raise LiveFatal(poller.fatal)
+    if died:
+        raise LiveFatal("poller thread ended unexpectedly")
+
+
+def _stop_and_join(poller: Poller) -> None:
+    if poller.ident is None:  # never started
+        return
+    poller.stop()
+    poller.join(timeout=JOIN_TIMEOUT_S)
+    if poller.is_alive():
+        raise LiveFatal(f"poller still on the wire {JOIN_TIMEOUT_S:.1f} s after stop")

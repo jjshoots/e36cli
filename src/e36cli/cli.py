@@ -496,7 +496,7 @@ def dashboard_cmd(
     ),
     dtc_interval: float = typer.Option(10.0, "--dtc-interval", help="Seconds between fault polls."),
     history: int = typer.Option(
-        dashmod.DEFAULT_HISTORY, "--history", help="History ring-buffer size (samples)."
+        dashmod.DEFAULT_HISTORY, "--history", min=1, help="History ring-buffer size (samples)."
     ),
     frames: int | None = typer.Option(
         None, "--frames", hidden=True, help="Render N frames then exit (testing/CI)."
