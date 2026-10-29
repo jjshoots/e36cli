@@ -7,6 +7,7 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
 ## Spin-up (read in this order)
 
 1. `SPEC.md` — the contract. Command surface, invariants, layer boundaries.
+   `STANDARDS.md` — the code standards every change is held to.
 2. `research/` — sourced protocol/data findings with confidence markers.
    Treat [low] confidence facts as hypotheses to verify on the car.
 3. `GARAGE.md` — what to do when the laptop is plugged into the car.

@@ -29,6 +29,8 @@ you, CI enforces it.
 4. **Writes are guarded.** Anything that modifies ECU state requires explicit
    confirmation, and non-DME modules are strictly read-only
    (see `research/cluster-and-service-reset.md` for why).
+5. **Code meets `STANDARDS.md`.** Layering, capture, error policy, resource
+   ownership, typing and test rules, each with how it is checked.
 
 ## Contributing a new ECU profile
 
@@ -36,7 +38,9 @@ The most valuable contribution. Open a *profile request* issue with:
 
 - `e36 ident` output (ECU ID, SW index, build week),
 - ideally a capture file from `~/.local/share/e36cli/captures/` of an
-  `ident` + `dtc read` + `live --once` session,
+  `ident` + `dtc read` + `live --once` session (the ident response carries
+  your DME's production serial — its tail may be the immobiliser ISN; zero it
+  out, or say so and we will, before anything is published),
 - what engine/market the car is.
 
 If you can verify parameters live (values physically plausible at idle,
