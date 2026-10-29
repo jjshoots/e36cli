@@ -17,8 +17,8 @@ from functools import lru_cache
 from pathlib import Path
 
 from . import ds2, ms41
+from .errors import E36Error
 from .ms41 import data_dir
-from .transport import TransportError
 
 STORED_RECORD_SIZE = 10
 
@@ -33,7 +33,7 @@ _FLAG_BITS = (
 )
 
 
-class DtcError(ValueError):
+class DtcError(E36Error, ValueError):
     """DTC response could not be decoded."""
 
 
@@ -187,7 +187,7 @@ def fetch_faults(
         try:
             prep = client.query(ds2.ADDR["DME"], ms41.CMD_DTC_PREPARE, timing=t)
             hours_now = decode_hours_counter(prep.data)
-        except (ds2.DS2Error, TransportError):
+        except ds2.DS2Error:  # a dead port (TransportError) still propagates
             hours_now = None  # fault ages are a bonus, not a requirement
     return faults, hours_now
 

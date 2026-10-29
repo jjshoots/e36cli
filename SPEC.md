@@ -102,14 +102,19 @@ stats to stderr). `e36 log` also takes `--samples N` for bounded runs (real
 samples only; gap rows don't count), `--burst N` and `--reconnect/--no-reconnect`.
 Env hooks: `E36CLI_CAPTURE_DIR`, `E36CLI_SIM_DTCS` (seed sim fault codes).
 
-Failure policy: the live poller treats wire errors as transient (keeps polling,
-gives up after 10 consecutive failed polls) and any other exception as fatal
+Failure policy (the code is `src/e36cli/policy.py`; change both together):
+the live poller treats wire errors and NAKs as transient (keeps polling, gives
+up after 10 consecutive failed polls) and any other exception as fatal
 immediately; either way the dashboard exits non-zero with a one-line message.
 Fault polls are interleaved on the SAME poller thread/client (single-master
-wire) and are always non-fatal: a failed DTC read keeps the last-known fault
-list with a "read failed" note, and in `--once`/`--json` the params still
-render. Transports are closed on every CLI exit path (capture files flush per
-event).
+wire) and are non-fatal for every wire, NAK or decode failure: a failed DTC
+read keeps the last-known fault list with a "read failed" note, and in
+`--once`/`--json` the params still render. A capture failure or a bug is fatal
+everywhere. `scan` reports an address with no coherent answer as silent, but a
+dead port aborts it (exit 1, rows so far printed). Every deliberate error
+(`E36Error`) reaches the user as one line and exit 1; anything else is a bug
+and keeps its traceback. Transports are closed on every CLI exit path (capture
+files flush per event).
 
 `e36 log` policy (src/e36cli/datalog.py — CLI/poller layer; the DS2 and
 transport layers know nothing of it): link errors (`TransportError` —

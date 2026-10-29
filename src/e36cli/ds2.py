@@ -17,6 +17,7 @@ from __future__ import annotations
 import time
 from dataclasses import dataclass
 
+from .errors import E36Error
 from .transport import Transport, TransportTimeout
 
 MAX_PAYLOAD = 252  # 8-bit length byte counts the whole frame (3 overhead bytes)
@@ -56,7 +57,7 @@ ADDR = {
 ADDR_NAMES = {v: k for k, v in ADDR.items()}
 
 
-class DS2Error(Exception):
+class DS2Error(E36Error):
     """Base for DS2 protocol failures."""
 
 

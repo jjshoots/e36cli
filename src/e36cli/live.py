@@ -17,8 +17,9 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from . import ds2, ms41
+from . import ds2, ms41, policy
 from . import dtc as dtcmod
+from .errors import E36Error
 from .transport import TransportError
 
 # Profile params are scattered across ~9 KB of RAM; bridging gaps up to this
@@ -30,7 +31,7 @@ PLAN_GAP = 16
 MAX_CONSECUTIVE_FAILURES = 10
 
 
-class LiveFatal(Exception):
+class LiveFatal(E36Error):
     """The live poller died; the dashboard must exit non-zero."""
 
 
@@ -206,7 +207,7 @@ class Poller(threading.Thread):
             start = time.monotonic()
             try:
                 values = poll_once(self.client, self.profile, self._plan, self.stats)
-            except (ds2.DS2Error, TransportError) as exc:
+            except policy.POLL_TRANSIENT as exc:
                 # Transient wire trouble: keep polling, but not forever.
                 consecutive += 1
                 self.store.set_error(str(exc))
@@ -232,9 +233,9 @@ class Poller(threading.Thread):
         """Interleaved DTC read; failures are transient (keep last-known list)."""
         try:
             faults, hours_now = dtcmod.fetch_faults(self.client)
-        except (ds2.DS2Error, TransportError, dtcmod.DtcError) as exc:
+        except policy.FAULT_POLL_NONFATAL as exc:
             self.store.set_faults_error(str(exc))
-        except Exception as exc:  # decode/programming error: same policy as params
+        except Exception as exc:  # capture failure or a bug: fatal, as for params
             self._die(f"fault poll crashed: {exc!r}")
             self.stop_event.set()
         else:

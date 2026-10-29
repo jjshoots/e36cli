@@ -2,24 +2,25 @@
 
 from __future__ import annotations
 
+import functools
 import json
 import os
 import time
-from collections.abc import Iterator
+from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
+from typing import ParamSpec, TypeVar
 
 import typer
 from rich.console import Console
 from rich.table import Table
 
 from . import dashboard as dashmod
-from . import datalog, ds2, live, ms41
+from . import datalog, ds2, live, ms41, policy
 from . import dtc as dtcmod
 from . import panel as panelmod
 from .capture import (
-    CaptureError,
     CaptureSink,
     CaptureWriter,
     KeepOpenCapture,
@@ -35,6 +36,9 @@ from .transport import (
     TransportError,
     close_quietly,
 )
+
+P = ParamSpec("P")
+R = TypeVar("R")
 
 app = typer.Typer(
     name="e36",
@@ -134,6 +138,22 @@ def fail(msg: str) -> typer.Exit:
     return typer.Exit(code=1)
 
 
+def user_errors(fn: Callable[P, R]) -> Callable[P, R]:
+    """The one place deliberate errors become a red line + exit 1 (STD-03).
+
+    Anything that is not an E36Error is a bug and keeps its traceback.
+    """
+
+    @functools.wraps(fn)
+    def wrapper(*args: P.args, **kwargs: P.kwargs) -> R:
+        try:
+            return fn(*args, **kwargs)
+        except policy.USER_FACING as exc:
+            raise fail(str(exc)) from None
+
+    return wrapper
+
+
 def resolve_profile(cfg: Config, client: ds2.DS2Client) -> tuple[ms41.Profile, ms41.Ident | None]:
     profiles = ms41.load_profiles()
     if cfg.profile_id is not None:
@@ -154,16 +174,6 @@ def resolve_profile(cfg: Config, client: ds2.DS2Client) -> tuple[ms41.Profile, m
     return profile, ident
 
 
-WIRE_ERRORS = (
-    ds2.DS2Error,
-    TransportError,
-    CaptureError,
-    ms41.ProfileError,
-    ms41.DecodeError,
-    dtcmod.DtcError,
-)
-
-
 @app.command()
 def doctor(ctx: typer.Context) -> None:
     """Check port, permissions, FTDI latency timer, captures dir."""
@@ -181,17 +191,15 @@ def doctor(ctx: typer.Context) -> None:
 
 
 @app.command()
+@user_errors
 def ident(ctx: typer.Context) -> None:
     """Read and parse the DME identification; show the matched profile."""
     cfg: Config = ctx.obj
-    try:
-        with make_client(cfg) as client:
-            profile, parsed = resolve_profile(cfg, client)
-            if parsed is None:  # --profile override: still show the real ident
-                resp = client.query(ds2.ADDR["DME"], ms41.CMD_IDENT)
-                parsed = ms41.parse_ident(resp.data)
-    except WIRE_ERRORS as exc:
-        raise fail(str(exc)) from None
+    with make_client(cfg) as client:
+        profile, parsed = resolve_profile(cfg, client)
+        if parsed is None:  # --profile override: still show the real ident
+            resp = client.query(ds2.ADDR["DME"], ms41.CMD_IDENT)
+            parsed = ms41.parse_ident(resp.data)
     table = Table(title="DME identification")
     table.add_column("Field")
     table.add_column("Value")
@@ -224,10 +232,21 @@ def ident(ctx: typer.Context) -> None:
 # Euro E36 body modules historically need BMW's ADS interface (K-line as TXD,
 # L-line as RXD) — a plain KKL cable may never reach them. See
 # research/cluster-and-service-reset.md §2.0.
-ADS_SUSPECTS = {"IKE", "ABS", "EWS"}
+ADS_SUSPECTS = {"IKE", "ABS"}  # EWS 0x44 answers on KKL (car/captures/car-koeo-scan.jsonl)
+
+
+@contextmanager
+def _print_on_error(table: Table) -> Iterator[None]:
+    """Show what was gathered before a fatal error ends the command."""
+    try:
+        yield
+    except BaseException:
+        console.print(table)
+        raise
 
 
 @app.command()
+@user_errors
 def scan(ctx: typer.Context) -> None:
     """Probe known E36 module addresses (read-only idents); list responders.
 
@@ -245,7 +264,7 @@ def scan(ctx: typer.Context) -> None:
     table.add_column("Response")
     table.add_column("Ident bytes", overflow="fold")
     found = 0
-    with make_client(cfg) as client:
+    with make_client(cfg) as client, _print_on_error(table):
         for name, addr in sorted(ds2.ADDR.items(), key=lambda kv: kv[1]):
             try:
                 resp = client.query(addr, b"\x00", timing=probe)
@@ -255,7 +274,7 @@ def scan(ctx: typer.Context) -> None:
             except ds2.NakResponse as exc:
                 table.add_row(name, f"0x{addr:02X}", f"answers ({exc.meaning})", "")
                 found += 1
-            except WIRE_ERRORS:
+            except policy.SCAN_SILENT:
                 silent = (
                     "no answer (may require ADS interface)"
                     if name in ADS_SUSPECTS
@@ -267,14 +286,12 @@ def scan(ctx: typer.Context) -> None:
 
 
 @dtc_app.command("read")
+@user_errors
 def dtc_read(ctx: typer.Context) -> None:
     """Read and decode stored fault codes."""
     cfg: Config = ctx.obj
-    try:
-        with make_client(cfg) as client:
-            faults, hours_now = dtcmod.fetch_faults(client)
-    except WIRE_ERRORS as exc:
-        raise fail(str(exc)) from None
+    with make_client(cfg) as client:
+        faults, hours_now = dtcmod.fetch_faults(client)
     if not faults:
         console.print("[green]No stored fault codes.[/green]")
         return
@@ -305,6 +322,7 @@ def dtc_read(ctx: typer.Context) -> None:
 
 
 @dtc_app.command("clear")
+@user_errors
 def dtc_clear(
     ctx: typer.Context,
     yes: bool = typer.Option(False, "--yes", help="Skip confirmation."),
@@ -314,15 +332,13 @@ def dtc_clear(
     if not yes and not typer.confirm("Clear the DME fault memory?"):
         console.print("Aborted.")
         raise typer.Exit(code=1)
-    try:
-        with make_client(cfg) as client:
-            client.query(ds2.ADDR["DME"], ms41.CMD_DTC_CLEAR, timing=ds2.CLEAR)
-    except WIRE_ERRORS as exc:
-        raise fail(str(exc)) from None
+    with make_client(cfg) as client:
+        client.query(ds2.ADDR["DME"], ms41.CMD_DTC_CLEAR, timing=ds2.CLEAR)
     console.print("[green]Fault memory cleared.[/green]")
 
 
 @app.command("live")
+@user_errors
 def live_cmd(
     ctx: typer.Context,
     once: bool = typer.Option(False, "--once", help="Single snapshot, then exit."),
@@ -361,7 +377,7 @@ def live_cmd(
                 if dtc_on:
                     try:
                         faults, hours_now = dtcmod.fetch_faults(client)
-                    except WIRE_ERRORS as exc:
+                    except policy.FAULT_POLL_NONFATAL as exc:
                         faults_error = str(exc)  # non-fatal: params still print
                 if json_out:
                     doc = {
@@ -424,18 +440,13 @@ def live_cmd(
                     names=names,
                     dtc_interval=dtc_interval if dtc_on else 0.0,
                 )
-    except live.LiveFatal as exc:
-        raise fail(str(exc)) from None
-    except KeyError as exc:
-        raise fail(f"unknown param: {exc}") from None
-    except WIRE_ERRORS as exc:
-        raise fail(str(exc)) from None
     finally:
         if stats is not None:
             err_console.print(stats.summary())
 
 
 @app.command("panel")
+@user_errors
 def panel_cmd(
     ctx: typer.Context,
     rate: float = typer.Option(10.0, "--rate", help="Max poll rate (Hz)."),
@@ -455,7 +466,7 @@ def panel_cmd(
                 try:
                     resp = client.query(ds2.ADDR["DME"], ms41.CMD_IDENT)
                     ident = ms41.parse_ident(resp.data)
-                except WIRE_ERRORS:
+                except (*policy.LINK, ds2.NakResponse, ms41.DecodeError):
                     ident = None  # header just omits it
             panelmod.run_panel(
                 client,
@@ -466,16 +477,13 @@ def panel_cmd(
                 dtc_interval=dtc_interval,
                 stats=stats,
             )
-    except live.LiveFatal as exc:
-        raise fail(str(exc)) from None
-    except WIRE_ERRORS as exc:
-        raise fail(str(exc)) from None
     finally:
         if stats is not None:
             err_console.print(stats.summary())
 
 
 @app.command("dashboard")
+@user_errors
 def dashboard_cmd(
     ctx: typer.Context,
     rate: float = typer.Option(10.0, "--rate", help="Max poll rate (Hz)."),
@@ -519,12 +527,6 @@ def dashboard_cmd(
                 stats=stats,
                 frames=frames,
             )
-    except live.LiveFatal as exc:
-        raise fail(str(exc)) from None
-    except KeyError as exc:
-        raise fail(f"unknown param: {exc}") from None
-    except WIRE_ERRORS as exc:
-        raise fail(str(exc)) from None
     finally:
         if stats is not None:
             err_console.print(stats.summary())
@@ -636,6 +638,7 @@ LOG_EPILOG = (
 
 
 @app.command("log", epilog=LOG_EPILOG)
+@user_errors
 def log_cmd(
     ctx: typer.Context,
     out: Path = typer.Argument(..., help="Output file (.csv or .jsonl)."),
@@ -725,10 +728,6 @@ def log_cmd(
                 logger.close()
     except KeyboardInterrupt:
         pass
-    except KeyError as exc:
-        raise fail(f"unknown param: {exc}") from None
-    except WIRE_ERRORS as exc:
-        raise fail(str(exc)) from None
     finally:
         capture.close()
         if stats is not None:
@@ -740,6 +739,7 @@ def log_cmd(
 
 
 @app.command()
+@user_errors
 def raw(
     ctx: typer.Context,
     hexbytes: list[str] = typer.Argument(..., help="Frame or addr+payload, hex bytes."),
@@ -769,8 +769,6 @@ def raw(
     except ds2.NakResponse as exc:
         console.print(f"RX  status 0x{exc.status:02X} ({exc.meaning})")
         raise typer.Exit(code=1) from None
-    except WIRE_ERRORS as exc:
-        raise fail(str(exc)) from None
     console.print(f"RX  {ds2.hexstr(resp.frame.raw)}")
     console.print(f"    status 0x{resp.status:02X}, data: {ds2.hexstr(resp.data) or '(none)'}")
 

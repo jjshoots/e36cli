@@ -17,6 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable
 
+from .errors import E36Error
 from .formula import compile_formula, decode_raw
 
 MAX_READ_CHUNK = 0xF8
@@ -31,11 +32,15 @@ CMD_DTC_SHADOW = bytes([0x14, 0x01])    # shadow fault memory (11-byte records)
 CMD_DTC_CLEAR = bytes([0x05])           # WRITE operation
 
 
-class ProfileError(ValueError):
+class ProfileError(E36Error, ValueError):
     """Profile data failed to load or validate."""
 
 
-class DecodeError(ValueError):
+class UnknownParamError(ProfileError):
+    """A param name asked for (--params, Profile.param) is not in the profile."""
+
+
+class DecodeError(E36Error, ValueError):
     """A response payload didn't match the expected shape (short/long read)."""
 
 
@@ -140,7 +145,7 @@ class Profile:
         for p in self.params:
             if p.name == name:
                 return p
-        raise KeyError(name)
+        raise UnknownParamError(f"unknown param {name!r} in profile {self.id}")
 
     @property
     def core_params(self) -> tuple[ParamSpec, ...]:
@@ -363,7 +368,7 @@ def plan_reads(
     if names is not None:
         missing = set(names) - {p.name for p in chosen}
         if missing:
-            raise KeyError(f"unknown params: {sorted(missing)}")
+            raise UnknownParamError(f"unknown param(s): {', '.join(sorted(missing))}")
     if not chosen:
         return []
 

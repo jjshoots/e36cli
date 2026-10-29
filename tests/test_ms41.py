@@ -12,6 +12,7 @@ from e36cli import ms41
 from e36cli.ms41 import (
     MAX_READ_CHUNK,
     Ident,
+    UnknownParamError,
     build_read_payload,
     decode_reads,
     load_profiles,
@@ -274,7 +275,7 @@ def test_plan_reads_subset_and_unknown(profiles):
     profile = profiles["ms41.1"]
     reqs = plan_reads(profile, names=["rpm", "coolant_temp"])
     assert {p.name for req in reqs for p, _ in req.params} == {"rpm", "coolant_temp"}
-    with pytest.raises(KeyError):
+    with pytest.raises(UnknownParamError, match="nope"):
         plan_reads(profile, names=["rpm", "nope"])
 
 

@@ -24,8 +24,8 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import IO
 
-from . import ds2, live, ms41
-from .transport import Transport, TransportError, close_quietly, set_ftdi_latency
+from . import ds2, live, ms41, policy
+from .transport import Transport, close_quietly, set_ftdi_latency
 
 # Seconds between device-node checks / reopen attempts while the link is down.
 RECONNECT_POLL_S = 0.5
@@ -34,18 +34,9 @@ RECONNECT_POLL_S = 0.5
 # 40-sample bursts survived on a cable that died under continuous streaming.
 DEFAULT_BURST = 40
 
-# Errors that mean "the link is sick", worth a close + reopen: the transport
-# layer's own errors (SerialTransport wraps every pyserial/termios failure into
-# TransportError), plus the retryable DS2 errors the client already retried
-# and gave up on. NakResponse / decode / profile errors are deterministic, and
-# a CaptureError (disk full, unwritable dir) must stop the run: reopening the
-# port cannot fix any of them, so they stay fatal.
-LINK_ERRORS: tuple[type[BaseException], ...] = (
-    TransportError,
-    ds2.Timeout,
-    ds2.ChecksumError,
-    ds2.EchoMismatch,
-)
+# Errors that mean "the link is sick", worth a close + reopen. Defined in
+# policy.py with the rest of the failure policy (SPEC `e36 log` policy).
+LINK_ERRORS = policy.LOG_RECONNECT
 
 
 class SampleWriter:

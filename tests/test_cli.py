@@ -64,8 +64,9 @@ def test_scan_shows_ident_bytes_and_ads_note():
     assert result.exit_code == 0, result.output
     # DME answers: raw ident bytes shown (sim ident starts with ASCII "1437806")
     assert "31 34 33 37" in result.output.lower() or "31 34 33 37".upper() in result.output
-    # IKE/ABS/EWS stay silent on a KKL cable: neutral ADS note, not just "silent"
-    assert result.output.count("may require ADS") == 3
+    # IKE/ABS stay silent on a KKL cable: neutral ADS note, not just "silent"
+    # (EWS answers ident on KKL: car/captures/car-koeo-scan.jsonl)
+    assert result.output.count("may require ADS") == 2
     assert "unverified on this car" in result.output
 
 
@@ -441,3 +442,33 @@ def test_unwritable_capture_dir_is_a_one_line_fatal_error(tmp_path, monkeypatch,
     assert result.exit_code == 1
     assert isinstance(result.exception, SystemExit)  # no traceback
     assert "cannot write capture" in result.output
+
+
+def test_scan_dead_port_fails_after_showing_partial_table(monkeypatch):
+    # A pulled cable (TransportError) is not an empty bus: exit 1, keep the rows so far.
+    from e36cli import cli
+    from e36cli.sim import SimTransport, SimulatedDME
+    from e36cli.transport import CapturingTransport, TransportError
+
+    class DiesAfterOne(SimTransport):
+        sends = 0
+
+        def send(self, data):
+            DiesAfterOne.sends += 1
+            if DiesAfterOne.sends > 1:
+                raise TransportError("/dev/fake: device disconnected")
+            super().send(data)
+
+    monkeypatch.setattr(
+        cli,
+        "make_transport",
+        lambda cfg, capture=None: CapturingTransport(
+            DiesAfterOne(SimulatedDME()), cli.CaptureWriter("sim", cfg.capture_dir)
+        ),
+    )
+    result = invoke("--sim", "scan")
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)
+    assert "device disconnected" in result.output
+    assert "DS2 bus scan" in result.output  # the partial table was printed
+    assert "module(s) responding" not in result.output

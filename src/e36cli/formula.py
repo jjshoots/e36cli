@@ -12,6 +12,8 @@ import math
 import operator
 from collections.abc import Callable
 
+from .errors import E36Error
+
 _BINOPS: dict[type, Callable[[float, float], float]] = {
     ast.Add: operator.add,
     ast.Sub: operator.sub,
@@ -20,7 +22,7 @@ _BINOPS: dict[type, Callable[[float, float], float]] = {
 }
 
 
-class FormulaError(ValueError):
+class FormulaError(E36Error, ValueError):
     """Formula failed to parse or used a disallowed construct."""
 
 

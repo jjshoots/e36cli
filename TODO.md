@@ -39,12 +39,7 @@ scaling changes come with tests.
       `e36 captures merge` (or similar) that concatenates them with a
       monotonic time column (and an empty gap row between parts, matching
       the new reconnect marker).
-- [ ] **Drop EWS from `ADS_SUSPECTS`** (`src/e36cli/cli.py` ~line 201). EWS
-      0x44 answered its ident probe on the KKL cable
-      (`88 36 22 77 02 01 01 FF 02 96 06 01`), as did GM 0x00
-      (`88 36 94 82 14 03 02 00 31 95 02 13`); both are already in the scan
-      table. IKE 0x80 / ABS 0x56 stayed silent, so keep those. Ident-only,
-      never write (SPEC hard rule). Golden: `car/captures/car-koeo-scan.jsonl`.
+- [x] **Drop EWS from `ADS_SUSPECTS`** — done 2026-10-30.
 
 ## Profile `ms41.0-1429373` (each change with tests; see research note §4)
 
