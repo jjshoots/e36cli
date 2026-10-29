@@ -64,4 +64,49 @@ coolant/IAT `verified_source` extended to the cold KOEO capture.
 - [ ] **(Optional) mark O2 front params `core = true`** once the scaling is
       trusted.
 
+## Code review lows (2026-10-30 panel; standard ids in STANDARDS.md)
+
+The 5 high + 15 medium findings are fixed. Remaining low-severity ones:
+
+- [ ] **F-21** (STD-10) Wrap runtime formula errors: ArithmeticError / non-finite
+      result in `ParamSpec.decode` → DecodeError naming param, formula, raw.
+- [ ] **F-22** (STD-10) DTC record size inferred from divisibility; pass the
+      expected size from `fetch_faults`, refuse ambiguous bare-04 payloads.
+- [ ] **F-23** (STD-09) DTC DB: parse once into frozen `DtcInfo`, strict
+      validation, wrapped TOML/OS errors; drop the unused `path_str`.
+- [ ] **F-25** (STD-07) `ds2.Timing` frozen + validated; replace the two
+      control-flow asserts with typed raises.
+- [ ] **F-26** (STD-07) One wire-cost model (`ds2.wire_time(n)`): derive read
+      deadlines from it (MAX_READ_CHUNK 0xF8 can exceed the 0.3 s deadline;
+      the probe needed ≤0x60), point the perf tests at it.
+      (`Timing.worst_case_s` landed for the join timeout.)
+- [ ] **F-27** (STD-01) Split live.py into a rich-free engine module + views;
+      add an AST import-direction test.
+- [ ] **F-28** (STD-04) CaptureReader: reject unknown header versions (non-object
+      lines and unknown `dir` are done).
+- [ ] **F-30** (STD-19) Test that every `car/captures/` file is used by a test
+      and every `verified_source` path resolves (car/README.md is the index).
+- [ ] **F-31** (STD-15) Public seams instead of private access in tests
+      (`sim._queue`, `_n_requests`); request-keyed sim fault injection; SLF001.
+- [ ] **F-32** (STD-16) Move the six copied capture-dir fixtures into
+      tests/conftest.py (also isolate HOME); read env vars once into Config;
+      strict pytest settings (`--strict-markers`, `-ra`, `filterwarnings=error`).
+- [ ] **F-34** (STD-14) `ParamSpec.from_toml()` instead of setting `_fn` after
+      construction; public `evaluate(x)` for the sim.
+- [ ] **F-35** (STD-14) Frozen `FaultsSnapshot` instead of the 5-tuple; Mode
+      StrEnum for controller state (`_ReplayPair`, `Endian` are done).
+- [ ] **F-36** (STD-12) `ms41.read_ident(client)`, one live-snapshot serializer,
+      Annotated option aliases (the single error decorator is done).
+- [ ] **F-37** (STD-21) Named DS2 status/opcode constants with citations; a
+      contract docstring on `DS2Client.query`.
+- [ ] **F-38** (STD-22) Dead branch + test-only symbols in sim.py; consider vulture.
+- [ ] **F-39** (STD-20) Timezone-aware capture header timestamp (DTZ); hoist or
+      justify function-local imports.
+- [ ] Release tooling (from the release-pipeline work): ruff/pytest-timeout into
+      the locked dev group so CI runs everything via `uv run`, no `uvx`.
+
+Done in passing: F-24 (run_session acquires inside the guard), F-29 (closed
+capture is terminal), F-33 (`__version__` from metadata, pinned CI ruff,
+`uv sync --locked`, 3.13/3.14 in the matrix).
+
 Owner-side physical checks for the car: `car/README.md`.
