@@ -97,7 +97,7 @@ class SimulatedDME:
             return 0.8
         if name == "tps_volts":
             return 0.65
-        if name == "ignition_advance":
+        if name in ("ignition_advance", "ignition_angle"):
             return 12 + r.uniform(-1, 1)
         if name == "vanos_angle":
             return 60.0  # must stay invertible within the 1-byte field (max ~95.5)

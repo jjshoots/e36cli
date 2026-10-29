@@ -193,14 +193,27 @@ def test_unsourced_ecu_ids_fall_back_to_generic(profiles):
         assert match_profile(ecu_id, profiles).id == "ms41-generic"
 
 
+# Scalings measured on the car to differ from the documented common block
+# (research/session3-coldstart.md §4); addresses and sizes still must agree.
+CAR_MEASURED_SCALINGS = {
+    ("ms41.0-1429373", "knock_retard_global"),
+    ("ms41.0-1429373", "o2_front_b1"),
+    ("ms41.0-1429373", "o2_front_b2"),
+}
+
+
 def test_common_block_agrees_across_every_profile(profiles):
     # The §3.6.1 addresses are the same on every documented MS41 ECU ID; any
     # future profile that disagrees is a transcription error.
     baseline = {p.name: (p.addr, p.size, p.formula) for p in profiles["ms41-generic"].params}
     for profile in profiles.values():
         for p in profile.params:
-            if p.name in baseline and p.name != "tps":
-                assert (p.addr, p.size, p.formula) == baseline[p.name], f"{profile.id}:{p.name}"
+            if p.name not in baseline or p.name == "tps":
+                continue
+            addr, size, formula = baseline[p.name]
+            assert (p.addr, p.size) == (addr, size), f"{profile.id}:{p.name}"
+            if (profile.id, p.name) not in CAR_MEASURED_SCALINGS:
+                assert p.formula == formula, f"{profile.id}:{p.name}"
 
 
 def test_variant_specific_addresses_differ_as_sourced(profiles):

@@ -93,6 +93,8 @@ source = "BimmerStein logger XML P9; research/ms41-data.md §3.6.1"
 verified = true
 verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
+# Not verified: the 2026-10-25 "verification" on ECU 1429373 read a value
+# that is static there (research/session3-coldstart.md §4.1).
 [[param]]
 name = "ignition_advance"
 core = true
@@ -102,8 +104,7 @@ addr = 0xE989
 size = 1
 formula = "0.373 * x - 23.6"
 source = "BimmerStein logger XML P10; research/ms41-data.md §3.6.1"
-verified = true
-verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
+verified = false
 
 [[param]]
 name = "knock_retard"

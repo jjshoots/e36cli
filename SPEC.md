@@ -193,7 +193,8 @@ No async framework — the wire is 960 B/s; threads suffice.
 - [x] Verified-on-car markers — garage session 1 (2026-10-25) verified the 8
       core physics params (rpm, maf, iat, coolant, vss, ignition, vanos, tps)
       on ECU 1429373; promoted in ms41.0-1429373 + ms41-generic profiles with
-      `verified_source` citing tests/fixtures/car-live-once.jsonl. DTC record
+      `verified_source` citing tests/fixtures/car-live-once.jsonl (ignition
+      0xE989 later demoted: static on this ECU, session 3). DTC record
       layout + hours counter also confirmed (research §4.2). Still unverified:
       the other common params (O2 ADCs, knock, idle valve, state bits) and all
       variant-specific addresses.

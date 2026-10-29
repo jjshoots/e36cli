@@ -7,8 +7,10 @@ K-line, so a failure here means the decode stack no longer matches reality.
 
 from __future__ import annotations
 
+import csv
 import json
 import re
+import statistics
 from pathlib import Path
 
 import pytest
@@ -17,6 +19,7 @@ from typer.testing import CliRunner
 from e36cli import dtc as dtcmod
 from e36cli.capture import CaptureReader
 from e36cli.cli import CAPTURE_DIR_ENV, app
+from e36cli.ms41 import load_profiles
 
 FIXTURES = Path(__file__).parent / "fixtures"
 
@@ -98,18 +101,11 @@ def test_car_live_once_json_values_are_the_recorded_physics():
     assert p["tps"]["value"] == 0.0
     assert p["ignition_advance"]["value"] == pytest.approx(128 * 0.373 - 23.6)  # 24.144
     assert p["vanos_angle"]["value"] == pytest.approx(50 * 0.3745)  # 18.725
-    # the 8 garage-verified params no longer carry the unverified marker
-    for name in (
-        "rpm",
-        "maf",
-        "iat",
-        "coolant_temp",
-        "vss",
-        "tps",
-        "ignition_advance",
-        "vanos_angle",
-    ):
+    # the 7 garage-verified params no longer carry the unverified marker
+    for name in ("rpm", "maf", "iat", "coolant_temp", "vss", "tps", "vanos_angle"):
         assert p[name]["verified"] is True, name
+    # 0xE989 was "verified" from this same static raw 128 — demoted after session 3
+    assert p["ignition_advance"]["verified"] is False
 
 
 def test_car_live_once_table_has_no_unverified_marker_on_promoted_params():
@@ -130,8 +126,27 @@ def test_car_live_once_table_has_no_unverified_marker_on_promoted_params():
 # --- garage session 3, 2026-10-29: key on, engine off, cold (research/session3-coldstart.md)
 
 
+def koeo_replayable_params() -> str:
+    """Every 1429373 param the KOEO --all capture can answer.
+
+    operating_state_bits (0xFD14) was dropped from the profile after the
+    capture, so engine_state_bits (0xFD24) now plans as a different 0x06 read
+    than the one recorded; everything else replays byte-for-byte.
+    """
+    profile = load_profiles()["ms41.0-1429373"]
+    return ",".join(p.name for p in profile.params if p.name != "engine_state_bits")
+
+
 def test_car_koeo_live_all_cold_engine_off():
-    result = replay("car-koeo-live-all.jsonl", "live", "--once", "--all", "--json", "--no-dtc")
+    result = replay(
+        "car-koeo-live-all.jsonl",
+        "live",
+        "--once",
+        "--json",
+        "--no-dtc",
+        "--params",
+        koeo_replayable_params(),
+    )
     assert result.exit_code == 0, result.output
     doc = json.loads(result.output)
     assert doc["profile"] == "ms41.0-1429373"
@@ -145,6 +160,17 @@ def test_car_koeo_live_all_cold_engine_off():
     # stft both banks parked at the 0x8000 zero point with the engine off
     assert p["stft_b1"]["raw"] == 32768
     assert p["stft_b2"]["raw"] == 32768
+    # session-3 profile corrections (research/session3-coldstart.md §4)
+    assert p["ignition_angle"]["raw"] == 0  # 0xE98D: nothing computed engine off
+    assert p["knock_retard_global"]["value"] == 0.0  # raw 0 = no retard
+    # front O2 inverted ADC span: both banks rest near the lean rail (~4.89 "V")
+    assert p["o2_front_b1"]["value"] == pytest.approx(100 - (25576 & 0x3FF) * 100 / 1023)
+    assert p["o2_front_b2"]["value"] == pytest.approx(100 - (29673 & 0x3FF) * 100 / 1023)
+    assert p["o2_front_b1"]["value"] < 5 and p["o2_front_b2"]["value"] < 5
+    assert p["lambda_integrator_b2"]["value"] == pytest.approx(4543 / 4096 * 100 - 100)
+    assert p["load"]["value"] == 0.0
+    for gone in ("ltft_b1", "ltft_b2", "knock_retard", "operating_state_bits"):
+        assert gone not in p
 
 
 def test_car_koeo_dtc_ages_advanced_frequencies_unchanged():
@@ -164,3 +190,39 @@ def test_car_koeo_scan_ews_and_gm_answer():
     assert "88 36 22 77" in result.output  # EWS 0x44 ident
     assert "88 36 94 82" in result.output  # GM 0x00 ident
     assert "3 module(s) responding" in result.output
+
+
+# --- session-3 evidence behind the 1429373 profile corrections (cold start log,
+# decoded with the pre-correction profile; raw recovered from the old formulas)
+
+
+def coldstart_rows() -> list[dict[str, str]]:
+    with (FIXTURES / "car-coldstart.csv").open() as fh:
+        return list(csv.DictReader(fh))
+
+
+def test_coldstart_e989_is_static_and_e98d_moves():
+    rows = coldstart_rows()
+    # old ignition_advance column (0xE989): one value through KOEO, crank and idle
+    assert {r["ignition_advance"] for r in rows} == {"24.14"}
+    # old knock_retard column (0xE98D, now ignition_angle): raw 0 engine off,
+    # several distinct values once running
+    raw_e98d = [round(float(r["knock_retard?"]) / 0.375 + 128) for r in rows]
+    running = [raw for raw, r in zip(raw_e98d, rows, strict=True) if float(r["rpm"]) > 0]
+    assert all(raw == 0 for raw, r in zip(raw_e98d, rows, strict=True) if float(r["rpm"]) == 0)
+    assert len(set(running)) >= 4
+
+
+def test_coldstart_load_scaling_tracks_maf_per_stroke():
+    profile = load_profiles()["ms41.0-1429373"]
+    load = profile.param("load")
+    ratios = []
+    for r in coldstart_rows():
+        rpm, maf = float(r["rpm"]), float(r["maf"])
+        if rpm > 600:
+            raw = round(float(r["load?"]) / 0.021195)  # pre-correction formula
+            mg_per_stroke = maf * 1e6 / (rpm * 60 * 3)  # 6 cyl, 4-stroke
+            ratios.append(load.decode(raw.to_bytes(2, "little")).value / mg_per_stroke)
+    assert len(ratios) > 40
+    assert statistics.median(ratios) == pytest.approx(1.0, abs=0.05)
+    assert all(0.85 < x < 1.2 for x in ratios)

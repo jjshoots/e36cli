@@ -15,7 +15,9 @@
 # calibration-side, not live params.) tps (0xE8D0) is address-invariant across
 # every documented variant and read plausibly on this car.
 #
-# Dashboard core = the generic 8 + stft_b1/b2 + battery (matches ms41.1 core).
+# Dashboard core = the generic 8 (with ignition_angle 0xE98D in place of the
+# static 0xE989) + stft_b1/b2 + battery. Session-3 corrections: see
+# research/session3-coldstart.md §4.
 [profile]
 id = "ms41.0-1429373"
 description = "MS41.0 (Euro M52) — ECU ID 1429373"
@@ -47,15 +49,17 @@ source = "BimmerStein logger XML P12; research/ms41-data.md §3.6.1"
 verified = true
 verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
+# Goes negative (-1.0…12.75, sawtooth): an idle-controller term, not a valve
+# position (research/session3-coldstart.md §4.5). Units unknown.
 [[param]]
 name = "idle_valve"
-label = "Idle valve pos"
+label = "Idle ctrl term"
 unit = "%"
 addr = 0xDA36
 size = 2
 signed = true
 formula = "x * 0.00153"
-source = "BimmerStein logger XML E9; research/ms41-data.md §3.6.1"
+source = "BimmerStein logger XML E9 (as idle valve pos); controller term per research/session3-coldstart.md §4.5"
 verified = false
 
 [[param]]
@@ -68,7 +72,7 @@ size = 1
 formula = "x * 0.747 - 48"
 source = "BimmerStein logger XML P11; cross-checked vs DTC freeze-frame 0.7471x-48; research §3.6.1"
 verified = true
-verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25); low end: tests/fixtures/car-koeo-live-all.jsonl (cold KOEO, coolant = IAT = ambient, 2026-10-29)"
 
 [[param]]
 name = "evap_duty"
@@ -90,7 +94,7 @@ size = 1
 formula = "x * 0.747 - 48"
 source = "BimmerStein logger XML P2; cross-checked vs DTC freeze-frame scaling; research §3.6.1"
 verified = true
-verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25); low end: tests/fixtures/car-koeo-live-all.jsonl (cold KOEO, coolant = IAT = ambient, 2026-10-29)"
 
 [[param]]
 name = "vss"
@@ -104,36 +108,47 @@ source = "BimmerStein logger XML P9; research/ms41-data.md §3.6.1"
 verified = true
 verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
 
+# 0xE989 is FROZEN on this ECU: raw 128 on 730/731 session-3 samples, engine
+# off and cranking included (one raw-114 outlier on a blip). The 2026-10-25
+# "verification" read the same constant — demoted, dropped from core.
+# (research/session3-coldstart.md §4.1; tests/test_car_fixtures.py pins the
+# evidence.)
 [[param]]
 name = "ignition_advance"
-core = true
-label = "Ignition advance"
+label = "Ignition @E989 (static)"
 unit = "°"
 addr = 0xE989
 size = 1
 formula = "0.373 * x - 23.6"
-source = "BimmerStein logger XML P10; research/ms41-data.md §3.6.1"
-verified = true
-verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
+source = "BimmerStein logger XML P10; research §3.6.1. Static on 1429373 (research/session3-coldstart.md §4.1)"
+verified = false
 
+# 0xE98D (documented as knock retard) behaves like the live ignition angle:
+# raw 0 engine off, -10.5…-3° just after a cold start (catalyst-heating
+# retard), steps to ~+13.9° at 45–48 °C coolant, ~+17° warm idle, max 19.1°
+# (research/session3-coldstart.md §4.2). The documented 0.375°/bit around 128
+# gives that shape; the offset is still a hypothesis. Core in place of the static 0xE989.
 [[param]]
-name = "knock_retard"
-label = "Knock retard (current)"
+name = "ignition_angle"
+core = true
+label = "Ignition angle"
 unit = "°"
 addr = 0xE98D
 size = 1
 formula = "(x - 128) * 0.375"
-source = "BimmerStein logger XML E217; research/ms41-data.md §3.6.1"
+source = "BimmerStein logger XML E217 (as knock retard); reinterpreted as ignition angle per research/session3-coldstart.md §4.2"
 verified = false
 
+# Raw 0 on every session-3 sample (KOEO included) and never above 12: raw 0
+# must be "no retard", so the documented -128 offset is dropped.
 [[param]]
 name = "knock_retard_global"
 label = "Knock retard (global)"
 unit = "°"
 addr = 0xE9D9
 size = 1
-formula = "(x - 128) * 0.375"
-source = "BimmerStein logger XML E24; research/ms41-data.md §3.6.1"
+formula = "x * 0.375"
+source = "BimmerStein logger XML E24 (offset dropped: raw 0 at rest, research/session3-coldstart.md §4.2)"
 verified = false
 
 [[param]]
@@ -146,7 +161,7 @@ size = 1
 formula = "x * 0.3745"
 source = "BimmerStein logger XML E11; research/ms41-data.md §3.6.1"
 verified = true
-verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25)"
+verified_source = "tests/fixtures/car-live-once.jsonl (idle, 2026-10-25); parks at raw 50 at idle, 16–19° on blips"
 
 [[param]]
 name = "tps"
@@ -171,28 +186,34 @@ formula = "x * 5 / 1023"
 source = "BimmerStein live_data.py; research/ms41-data.md §3.6.1 extras"
 verified = false
 
+# Front O2: x*5/1023 is NOT sensor volts here. The masked 10-bit count is
+# inverted and rail to rail (B2 ~4.8 "V" in decel fuel cut = lean, ~0.5 on
+# blip enrichment = rich; research/session3-coldstart.md §4.3). Shown as
+# inverted ADC span, rich high.
+# The high byte differs between banks at rest (0x63 vs 0x73) — unknown field.
 [[param]]
 name = "o2_front_b1"
-label = "O2 front bank 1"
-unit = "V"
+label = "O2 front bank 1 (rich↑)"
+unit = "%"
 addr = 0xFA9A
 size = 2
 mask = 0x03FF
-formula = "x * 5 / 1023"
-source = "BimmerStein logger XML; research/ms41-data.md §3.6.1"
+formula = "100 - x * 100 / 1023"
+source = "BimmerStein logger XML (addr); inverted-ADC scaling per research/session3-coldstart.md §4.3"
 verified = false
 
 [[param]]
 name = "o2_front_b2"
-label = "O2 front bank 2"
-unit = "V"
+label = "O2 front bank 2 (rich↑)"
+unit = "%"
 addr = 0xFA98
 size = 2
 mask = 0x03FF
-formula = "x * 5 / 1023"
-source = "BimmerStein logger XML; research/ms41-data.md §3.6.1"
+formula = "100 - x * 100 / 1023"
+source = "BimmerStein logger XML (addr); inverted-ADC scaling per research/session3-coldstart.md §4.3"
 verified = false
 
+# Rear O2: no sensors on this car (decat) — 1.6–1.8 V of floating-input noise.
 [[param]]
 name = "o2_rear_b1"
 label = "O2 rear bank 1"
@@ -236,15 +257,8 @@ formula = "x"
 source = "BimmerStein logger XML (bit0=closed throttle inv, bit1=full load); research §3.6.1"
 verified = false
 
-[[param]]
-name = "operating_state_bits"
-label = "Operating state bits"
-unit = "bits"
-addr = 0xFD14
-size = 1
-formula = "x"
-source = "BimmerStein logger XML (bit1=start, bit3=part load, bit5=decel cut); research §3.6.1"
-verified = false
+# operating_state_bits (0xFD14) removed: 0 on all 679 session-3 samples,
+# cranking and fuel cut included — dead address on this ECU (research/session3-coldstart.md §4.5).
 
 
 # --- variant-specific, established by live RAM probe 2026-10-25 ---
@@ -279,59 +293,62 @@ unit = "%"
 addr = 0xED96
 size = 2
 formula = "(x - 32768) * 100 / 65535"
-source = "live RAM probe 2026-10-25 (= 1429861 addr); actively regulating -2.25..-5.9% at idle, every sample distinct"
+source = "live RAM probe 2026-10-25 (= 1429861 addr); actively regulating -2.25..-5.9% at idle, every sample distinct; zero point raw 0x8000 confirmed KOEO (car-koeo-live-all.jsonl), updates per O2 crossing (research/session3-coldstart.md §4.4); 100/65535 vs 100/32768 factor unresolved"
 verified = false
 
-# LTFT: addresses behave correctly (B1 static at raw 4321 with lambda B1 dead;
-# B2 slowly adapting 4394-4525) but the DOCUMENTED (x-32768) scaling is wrong
-# for this ECU (gives -43%). Scaling below is the x/4096-as-factor hypothesis
-# (raw 4321 -> +5.5%); LOW confidence on scaling, HIGH on address.
+# Lambda-controller integrators (formerly mislabelled ltft_*): 0xEDA8 is a
+# sawtooth (~0.66 %/sample ramps) that freezes at ~12 % in fuel cut, not a
+# long-term trim; B1 static at raw 4321 (dead B1 sensor). The true B2 LTFT is
+# its steady offset from the STFT: mean(0xEDA8) - mean(0xED96) ≈ +11.3…12.6 %
+# over warm-up, which supports the x/4096-as-factor scaling (research/session3-coldstart.md §4.4). A
+# derived LTFT needs a two-param formula the profile schema can't express yet.
 [[param]]
-name = "ltft_b1"
-label = "Long trim B1"
+name = "lambda_integrator_b1"
+label = "Lambda integrator B1"
 unit = "%"
 addr = 0xED6E
 size = 2
 formula = "x * 0.0244140625 - 100"
-source = "live RAM probe 2026-10-25; addr = 1429861, scaling hypothesis x/4096 factor"
+source = "live RAM probe 2026-10-25 (addr = 1429861 LTFT); integrator per research/session3-coldstart.md §4.4, x/4096 factor"
 verified = false
 
 [[param]]
-name = "ltft_b2"
-label = "Long trim B2"
+name = "lambda_integrator_b2"
+label = "Lambda integrator B2"
 unit = "%"
 addr = 0xEDA8
 size = 2
 formula = "x * 0.0244140625 - 100"
-source = "live RAM probe 2026-10-25; addr = 1429861, scaling hypothesis x/4096 factor"
+source = "live RAM probe 2026-10-25 (addr = 1429861 LTFT); integrator per research/session3-coldstart.md §4.4, x/4096 factor"
 verified = false
 
-# Additive trims: B1 frozen at raw 0 (open loop), B2 live at raw 66-75. The
-# documented 0x8000-midpoint scaling is wrong here; treating raw as unsigned
-# x0.00534 ms (B2 ~ +0.36 ms). LOW confidence scaling, HIGH address.
+# Additive injection terms: B2 is 0 engine off, ~0.25 ms at first fire,
+# 0.44–0.50 ms warm — a live injection term, not a stored adaptation; B1
+# always 0 (open loop). Unsigned x0.00534 ms (research/session3-coldstart.md §4.4). LOW confidence.
 [[param]]
 name = "add_b1"
-label = "Additive trim B1"
+label = "Additive inj term B1"
 unit = "ms"
 addr = 0xED66
 size = 2
 formula = "x * 0.00534"
-source = "live RAM probe 2026-10-25; addr = 1429861, scaling hypothesis unsigned ms"
+source = "live RAM probe 2026-10-25; addr = 1429861 additive trim; live term per research/session3-coldstart.md §4.4"
 verified = false
 
 [[param]]
 name = "add_b2"
-label = "Additive trim B2"
+label = "Additive inj term B2"
 unit = "ms"
 addr = 0xEDA0
 size = 2
 formula = "x * 0.00534"
-source = "live RAM probe 2026-10-25; addr = 1429861, scaling hypothesis unsigned ms"
+source = "live RAM probe 2026-10-25; addr = 1429861 additive trim; live term per research/session3-coldstart.md §4.4"
 verified = false
 
-# Lambda status bytes: constant 0x02 (B1, open loop) / 0x01 (B2, closed loop)
-# through all rounds. Hypothesis: bit0 = closed-loop active (doc says bit3 on
-# other variants — does not match here). Raw bits exposed.
+# Lambda status bytes. bit0 = "closed loop reached since start", not "closed
+# loop now": B2 0→1 at 53.6–59.6 °C coolant and it stays 1 through fuel cut.
+# bit3 (value 9) seen on B2 during long rich idle stretches, meaning unknown.
+# B1: 0 KOEO/crank, 2 once running, nothing else (research/session3-coldstart.md §4.4). Raw bits exposed.
 [[param]]
 name = "lambda_bits_b1"
 label = "Lambda status B1"
@@ -352,14 +369,18 @@ formula = "x"
 source = "live RAM probe 2026-10-25; addr = 1429861 lambda-active byte"
 verified = false
 
+# load: the documented x*0.021195 read ~90x too small (1.0–1.5 at idle). Raw
+# counts track MAF/rpm (air mass per stroke); least-squares fit over the 48
+# running rows of tests/fixtures/car-coldstart.csv gives ~1.75 mg/stroke per
+# count (per-row 1.52–1.86). Empirical, LOW confidence.
 [[param]]
 name = "load"
-label = "Engine load"
+label = "Air mass / stroke"
 unit = "mg/stroke"
 addr = 0xFAFC
 size = 2
-formula = "x * 0.021195"
-source = "live RAM probe 2026-10-25 (= 1429861 addr); raw 51-54 stable at idle; scaling per doc, plausibility of units uncertain"
+formula = "x * 1.75"
+source = "live RAM probe 2026-10-25 (= 1429861 addr); scaling fitted to MAF/rpm, car-coldstart.csv (research/session3-coldstart.md §4.5)"
 verified = false
 
 # Battery: 1429861 documents 0xFB47; on this ECU the tracking byte is 0xFB45

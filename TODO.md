@@ -48,43 +48,26 @@ scaling changes come with tests.
 
 ## Profile `ms41.0-1429373` (each change with tests; see research note §4)
 
-- [ ] **Demote `ignition_advance` (0xE989) and find the real ignition angle.**
-      Raw 128 = 24.14° on 730/731 samples, engine off and cranking included
-      (one 18.92° outlier on a blip); the 2026-10-25 "verification" was the
-      same constant (`tests/test_car_fixtures.py`, ignition_advance assert,
-      which must change with it). Candidate: `knock_retard` 0xE98D, which
-      reads like an idle ignition angle (−10.5…−3° cold, ~+13.9° at 45–48 °C,
-      ~+17° warm); derive its scaling/offset. Also fix `knock_retard_global`
-      0xE9D9 (raw 0 → −48°, offset wrong).
-- [ ] **Rename `ltft_*` → `lambda_integrator_*` and derive the true LTFT.**
-      0xEDA8 (and 0xED6E) is a sawtooth controller integrator (~0.66 %/sample,
-      freezes at 11.99 in fuel cut), not a long-term trim. True B2 LTFT ≈
-      mean(0xEDA8) − mean(0xED96) ≈ 11.3 → 12.6 % — supports the x/4096 factor
-      scaling. Decide how to present a derived LTFT (computed param? panel
-      only?). `stft_b2` 0xED96 updates per O2 crossing.
-- [ ] **Front O2 scaling: raw / inverted.** `x*5/1023` is refuted as sensor
-      volts: B2 swings rail to rail (~0.43–4.8) and is inverted (4.8 = lean in
-      fuel cut, 0.5 = rich on blip). Also: KOEO raw words 0x63E8 vs 0x73E9
-      decode the same, so only the masked low bits look meaningful — check
-      what the high byte is. Rear O2 (1.6–1.8 V) is noise, no sensors (decat).
-- [ ] **`load` units.** 1.0–1.5 at idle, 8.8 on a blip: ~90× too small for
-      mg/stroke (true idle ≈ 118). Find the right scaling or meaning.
-- [ ] **`lambda_bits` semantics.** bit0 stays 1 through fuel cut (so it is
-      "closed loop reached", not "closed loop now"; B2 0→1 at 53.6–59.6 °C);
-      value 9 (bit 3) seen during long rich idle stretches; B1 0 KOEO, 2
-      running, never anything else.
-- [ ] **`add_*` meaning.** `add_b2` 0 engine-off → 0.25 ms at first fire →
-      0.44–0.47 ms warm: a live injection term, not a stored adaptation.
-      `add_b1` always 0. Relabel/rescale.
-- [ ] **Dead / misread params.** `operating_state_bits` 0xFD14 is 0 on every
-      sample (dead on this ECU); `idle_valve` goes negative (controller term,
-      not a position).
-- [ ] **Promote now-citable verifications** (with tests against the new
-      goldens): coolant/IAT low end (`car-koeo-live-all.jsonl`,
-      `car-coldstart.csv`), battery 9.99–14.38 V (pending the multimeter
-      check), `stft_b2` address + zero point.
-- [ ] **(Optional) mark O2 front params `core = true`** once their scaling is
-      fixed, so they show in the default dashboard view.
+Done 2026-10-30 (profile + tests/test_car_fixtures.py evidence tests):
+`ignition_advance` 0xE989 demoted (also in ms41-generic) and out of core;
+0xE98D is now `ignition_angle` (core, unverified, (x−128)·0.375);
+`knock_retard_global` offset dropped (x·0.375); `ltft_*` → `lambda_integrator_*`;
+front O2 → inverted ADC span `100 − x·100/1023` % (rich high); `load` →
+`x · 1.75` mg/stroke fitted to MAF/rpm (low confidence); `add_*`, `idle_valve`,
+`lambda_bits` relabelled/annotated; `operating_state_bits` removed (dead);
+coolant/IAT `verified_source` extended to the cold KOEO capture.
+
+- [ ] **Derived true LTFT** (B2 ≈ mean(integrator) − mean(STFT) ≈ +12 %). Needs a
+      two-param formula / derived-param concept the profile schema lacks —
+      design decision pending.
+- [ ] **Confirm `ignition_angle` offset** on the car (timing light at idle vs the
+      ~+17° reading) — then it can be promoted.
+- [ ] **`stft_*` factor**: zero point confirmed, 100/65535 vs 100/32768 open.
+- [ ] **O2 high byte** (0x63 vs 0x73 at rest) — separate field?
+- [ ] **`load` scaling**: fit spread 1.52–1.86 mg/count cold; re-check warm.
+- [ ] **Battery promotion** of the low end: pending the multimeter check.
+- [ ] **(Optional) mark O2 front params `core = true`** once the scaling is
+      trusted.
 
 ## Owner, physical (no laptop needed)
 
