@@ -7,8 +7,14 @@ scaling changes come with tests.
 
 ## Tooling
 
-- [ ] **Burst-style logging as the default.** A continuous `e36 log --all`
-      died twice on 2026-10-29 with `device reports readiness to read but
+- [x] **Burst-style logging as the default.** DONE 2026-10-29:
+      `src/e36cli/datalog.py` — `--burst N` (default 40) prophylactic reopen,
+      auto-reconnect with gap rows/`reconnect` events, `--no-reconnect`; see
+      SPEC `e36 log` policy. Deferred: the live/panel/dashboard Poller still
+      uses the old give-up-after-10 policy (no reconnect); the capture header
+      keeps the original port name if the FTDI re-enumerates elsewhere. Needs
+      on-car validation of a real drop → reconnect cycle. Original note:
+      a continuous `e36 log --all` died twice on 2026-10-29 with `device reports readiness to read but
       returned no data (device disconnected or multiple access on port?)`,
       and the FTDI later dropped off USB until physically replugged. What
       worked: a shell loop of `e36 log partNN.csv --all --samples 40 --rate 1.5`,
@@ -18,7 +24,8 @@ scaling changes come with tests.
       re-apply/verify the latency timer, keep appending to the SAME output
       file with a gap marker. See `src/e36cli/cli.py` (`log` command,
       `out.open("w", ...)` ~line 625) and the transport error path.
-- [ ] **Flush the CSV per row in `e36 log`.** Files showed 0 bytes until
+- [x] **Flush the CSV per row in `e36 log`.** DONE 2026-10-29 (CSV and
+      JSONL, `SampleWriter` flushes after every row; flush, not fsync). Files showed 0 bytes until
       process exit (buffered writer; killed bursts left 0-byte
       `coldstart-20261029-part53.csv` / `revtest-20261029-part04.csv`). Flush
       after every row so a crash/drop never loses data and `tail -f` works.
@@ -27,9 +34,11 @@ scaling changes come with tests.
       95 ms worst) vs the 2.5 Hz GARAGE target. The `--rate` cap is NOT the
       limiter — per-request wire time is. Only fewer frames help
       (research/ms41-data.md §3.7).
-- [ ] **Merge tool for burst logs.** Burst output is split across many
-      `partNN.csv` files; add `e36 captures merge` (or similar) that
-      concatenates them with a monotonic time column.
+- [ ] **Merge tool for burst logs.** Only needed for the session-3
+      `partNN.csv` files now — `e36 log` bursts into one file itself. Add
+      `e36 captures merge` (or similar) that concatenates them with a
+      monotonic time column (and an empty gap row between parts, matching
+      the new reconnect marker).
 - [ ] **Drop EWS from `ADS_SUSPECTS`** (`src/e36cli/cli.py` ~line 201). EWS
       0x44 answered its ident probe on the KKL cable
       (`88 36 22 77 02 01 01 FF 02 96 06 01`), as did GM 0x00

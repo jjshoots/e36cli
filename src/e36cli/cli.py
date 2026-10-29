@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-import csv
+import contextlib
 import json
 import os
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from dataclasses import dataclass
+from dataclasses import dataclass, replace
 from pathlib import Path
 
 import typer
@@ -16,10 +16,11 @@ from rich.console import Console
 from rich.table import Table
 
 from . import dashboard as dashmod
-from . import ds2, live, ms41
+from . import datalog, ds2, live, ms41
 from . import dtc as dtcmod
 from . import panel as panelmod
 from .capture import CaptureWriter, default_capture_dir, list_sessions
+from .datalog import KeepOpenCapture
 from .doctor import hard_failure, run_checks
 from .sim import SimDtc, SimTransport, SimulatedDME
 from .transport import SerialTransport, Transport, TransportError
@@ -73,8 +74,11 @@ def main(
     )
 
 
-def make_transport(cfg: Config) -> Transport:
-    capture = CaptureWriter("sim" if cfg.sim else cfg.port, cfg.capture_dir)
+def make_transport(
+    cfg: Config, capture: CaptureWriter | KeepOpenCapture | None = None
+) -> Transport:
+    if capture is None:
+        capture = CaptureWriter("sim" if cfg.sim else cfg.port, cfg.capture_dir)
     if cfg.sim:
         if cfg.sim_fixture is not None:
             sim = SimTransport.from_capture(cfg.sim_fixture)
@@ -594,16 +598,50 @@ def _sia_countdown(seconds: float) -> None:
     console.print("[bold green]Remove the jumper NOW.[/bold green]")
 
 
-@app.command("log")
+LOG_EPILOG = (
+    "Resilience (FTDI drops, research/session3-coldstart.md §2): by default the "
+    "port is closed and reopened every --burst samples (40), which kept the "
+    "KKL cable alive where continuous streaming killed it. On a link error the "
+    "logger warns on stderr, closes the port, waits for the device node to come "
+    "back (the --port path, or the only /dev/ttyUSB* if it re-enumerated under a "
+    "new number), re-applies the 1 ms FTDI latency timer, reopens and resumes — "
+    "appending to the same file. The outage is marked by a gap row: in CSV a row "
+    "with t and every param column empty; in JSONL an "
+    '{"event": "reconnect", "t", "gap_s", "port", "error"} line. t stays '
+    "monotonic (seconds since the first sample). Rows are flushed as written "
+    "(tail -f works). --no-reconnect restores fail-fast (always so under --sim)."
+)
+
+
+def _close_quietly(transport: Transport) -> None:
+    # pyserial may raise on close() after the USB device vanished; that must
+    # not mask the error that got us here.
+    with contextlib.suppress(Exception):
+        transport.close()
+
+
+@app.command("log", epilog=LOG_EPILOG)
 def log_cmd(
     ctx: typer.Context,
     out: Path = typer.Argument(..., help="Output file (.csv or .jsonl)."),
     rate: float = typer.Option(10.0, "--rate", help="Max sample rate (Hz)."),
-    samples: int = typer.Option(0, "--samples", help="Stop after N samples (0 = until Ctrl-C)."),
+    samples: int = typer.Option(
+        0, "--samples", help="Stop after N real samples (0 = until Ctrl-C); gap rows don't count."
+    ),
     all_params: bool = typer.Option(
         False, "--all", help="Every profile param (default: core set)."
     ),
     params: str | None = typer.Option(None, "--params", help="Comma-separated param names."),
+    burst: int = typer.Option(
+        datalog.DEFAULT_BURST,
+        "--burst",
+        help="Close and reopen the port every N samples (prophylactic vs FTDI drops; 0 = never).",
+    ),
+    reconnect: bool = typer.Option(
+        True,
+        "--reconnect/--no-reconnect",
+        help="On a link error wait for the device and resume (default) or exit non-zero.",
+    ),
 ) -> None:
     """Stream samples to CSV/JSONL until Ctrl-C (or --samples).
 
@@ -611,48 +649,65 @@ def log_cmd(
     rows carry a per-param "verified" field (SPEC invariant 3).
     """
     cfg: Config = ctx.obj
+    if burst < 0:
+        raise fail("--burst must be >= 0")
     stats = live.TimingStats() if cfg.timing_debug else None
     as_csv = out.suffix.lower() == ".csv"
-    min_period = 1.0 / rate if rate > 0 else 0.0
-    written = 0
+    # ONE capture session for the whole run, however many times we reopen.
+    capture = CaptureWriter("sim" if cfg.sim else cfg.port, cfg.capture_dir)
+    shared = KeepOpenCapture(capture)
+    logger: datalog.DataLogger | None = None
     try:
-        with make_client(cfg) as client:
-            profile, _ = resolve_profile(cfg, client)
+        try:
+            transport = make_transport(cfg, capture=shared)
+        except TransportError as exc:
+            raise fail(str(exc)) from None
+        if cfg.sim:
+            # The sim has no device node to lose: "reopening" reuses the same
+            # simulated DME / replay state, so sim output is unchanged.
+            def opener(port: str) -> Transport:
+                return transport
+        else:
+
+            def opener(port: str) -> Transport:
+                return make_transport(replace(cfg, port=port), capture=shared)
+
+        try:
+            profile, _ = resolve_profile(cfg, ds2.DS2Client(transport))
             selected = live.select_names(profile, all_params, params)
             reads = live.plan(profile, names=selected)
-            specs = [p for p in profile.params if selected is None or p.name in selected]
-            names = [p.name for p in specs]
-            with out.open("w", newline="", encoding="utf-8") as fh:
-                writer = csv.writer(fh) if as_csv else None
-                if writer:
-                    writer.writerow(["t", *(p.name if p.verified else f"{p.name}?" for p in specs)])
-                t0 = time.monotonic()
-                while samples <= 0 or written < samples:
-                    start = time.monotonic()
-                    values = live.poll_once(client, profile, reads, stats=stats)
-                    t = time.monotonic() - t0
-                    if writer:
-                        writer.writerow(
-                            [f"{t:.3f}"]
-                            + [f"{values[n].value:.4g}" if n in values else "" for n in names]
-                        )
-                    else:
-                        fh.write(
-                            json.dumps(
-                                {
-                                    "t": round(t, 3),
-                                    "params": {
-                                        n: {"value": v.value, "verified": v.verified}
-                                        for n, v in values.items()
-                                    },
-                                }
-                            )
-                            + "\n"
-                        )
-                    written += 1
-                    leftover = min_period - (time.monotonic() - start)
-                    if leftover > 0:
-                        time.sleep(leftover)
+        except BaseException:
+            _close_quietly(transport)
+            raise
+        specs = [p for p in profile.params if selected is None or p.name in selected]
+        try:
+            fh = out.open("w", newline="", encoding="utf-8")
+        except OSError as exc:
+            _close_quietly(transport)
+            raise fail(f"cannot write {out}: {exc}") from None
+        with fh:
+            logger = datalog.DataLogger(
+                opener,
+                transport,
+                cfg.port,
+                profile,
+                reads,
+                datalog.SampleWriter(fh, specs, as_csv),
+                samples=samples,
+                rate=rate,
+                burst=burst,
+                # The sim has no device to lose: a sim link error (a replay
+                # missing a frame) is deterministic, so it stays fatal exactly
+                # as before instead of waiting forever for --port to appear.
+                reconnect=reconnect and not cfg.sim,
+                stats=stats,
+                latency_check=None if cfg.sim else datalog.latency_problem,
+                warn=lambda msg: typer.echo(msg, err=True),
+            )
+            try:
+                logger.run()
+            finally:
+                logger.close()
     except KeyboardInterrupt:
         pass
     except KeyError as exc:
@@ -660,9 +715,13 @@ def log_cmd(
     except WIRE_ERRORS as exc:
         raise fail(str(exc)) from None
     finally:
+        capture.close()
         if stats is not None:
             err_console.print(stats.summary())
+    written = logger.written if logger is not None else 0
     console.print(f"Wrote {written} sample(s) to {out}")
+    if logger is not None and logger.reconnects:
+        console.print(f"Survived {logger.reconnects} link drop(s) (gap rows mark each one)")
 
 
 @app.command()

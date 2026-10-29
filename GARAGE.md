@@ -29,7 +29,8 @@ record and continue. Everything is auto-captured to
 
 6. `e36 live` at idle: RPM ~700–800, battery ~13.8–14.2 V (alternator),
    coolant rising. Blip throttle: RPM + TPS + MAF must move together.
-7. `e36 log idle-warmup.csv` for a few minutes of warmup.
+7. `e36 log idle-warmup.csv` for a few minutes of warmup (burst reopen +
+   auto-reconnect are on by default; watch stderr for link warnings).
 8. `--timing-debug` on: record achieved poll rate (target ≥ 2.5 Hz core).
 
 ## Session 3 — new features to validate on the car
@@ -81,10 +82,17 @@ Physical checks (owner, no laptop needed):
 
 On the car:
 
-- [ ] Use **burst logging only** (`e36 log partNN.csv --samples 40 --rate 1.5`
-      in a loop, reopening the port each burst) until `e36 log` reconnects on
-      its own. Never run a long continuous log on this cable. Try a different
-      USB port/cable if drops continue.
+- [ ] Logging no longer needs the shell loop: plain `e36 log warmup.csv --all`
+      reopens the port every 40 samples (`--burst`, the pattern that survived
+      session 3) and, if the FTDI drops anyway, warns on stderr, waits for the
+      device (replug if it stays gone — it picks up a re-enumerated
+      /dev/ttyUSBn if it is the only one), re-applies the latency timer and
+      resumes into the SAME file with a gap row (empty param columns; JSONL:
+      a `"event": "reconnect"` line). Rows are flushed as written, so
+      `tail -f warmup.csv` works. **Validate on the car:** a real drop →
+      reconnect cycle (stderr warning, gap row, resume), and whether
+      `--burst 40` alone prevents drops on a long run. Try a different USB
+      port/cable if drops continue.
 - [ ] After the profile fixes in TODO.md land: re-log a warm idle + blips to
       check the new ignition-angle candidate (0xE98D) and the O2/LTFT
       reinterpretation.

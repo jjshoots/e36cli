@@ -88,14 +88,15 @@ core = true               # optional: dashboard-core subset (live/log default)
 | `e36 live` | Rich live dashboard (core param set by default; `--all`, `--params a,b`, `--rate`) plus a stored-faults panel (polled every `--dtc-interval` s, default 10; `--no-dtc` hides) | no |
 | `e36 live --once` / `--json` | Single snapshot, human or JSON; includes faults (`--no-dtc` skips; JSON gets a `faults` array, or `faults_error` on a failed read) | no |
 | `e36 dashboard` | Full-screen tile grid with per-param history sparklines (same selection/DTC flags; `--history N` ring-buffer size; keys: `q` quit, `c` clear faults behind the same in-TUI `y` confirmation as panel, `p` pause rendering, `+`/`-` history window) | **c key** |
-| `e36 log OUT.csv` | Stream samples to CSV/JSONL until Ctrl-C (same selection flags; unverified params marked in headers/fields) | no |
+| `e36 log OUT.csv` | Stream samples to CSV/JSONL until Ctrl-C (same selection flags; unverified params marked in headers/fields). Rows flushed as written. Resilient by default: `--burst N` closes/reopens the port every N samples (default 40, 0 = never); on a link error it waits for the device to return and resumes into the same file with a gap marker (`--no-reconnect` = fail fast) | no |
 | `e36 raw HEX...` | Send arbitrary frame, print hex response (the probe tool) | caution |
 | `e36 captures` | List/show capture sessions | no |
 
 Global options: `--port PATH` (default `/dev/ttyUSB0`), `--sim` (simulated
 transport) / `--sim-fixture PATH` (capture replay, implies `--sim`),
 `--profile ID` (override auto-match), `--timing-debug` (per-request latency
-stats to stderr). `e36 log` also takes `--samples N` for bounded runs.
+stats to stderr). `e36 log` also takes `--samples N` for bounded runs (real
+samples only; gap rows don't count), `--burst N` and `--reconnect/--no-reconnect`.
 Env hooks: `E36CLI_CAPTURE_DIR`, `E36CLI_SIM_DTCS` (seed sim fault codes).
 
 Failure policy: the live poller treats wire errors as transient (keeps polling,
@@ -106,6 +107,22 @@ wire) and are always non-fatal: a failed DTC read keeps the last-known fault
 list with a "read failed" note, and in `--once`/`--json` the params still
 render. Transports are closed on every CLI exit path (capture files flush per
 event).
+
+`e36 log` policy (src/e36cli/datalog.py — CLI/poller layer; the DS2 and
+transport layers know nothing of it): link errors (`TransportError`/`OSError`,
+incl. pyserial's FTDI-drop `SerialException`, plus `Timeout`/`ChecksumError`/
+`EchoMismatch` after the client's retries) close the port, warn one line on
+stderr, wait for the device node (the `--port` path; if that is a
+`/dev/ttyUSB*` and gone, the only `/dev/ttyUSB*` present; poll 0.5 s; Ctrl-C
+exits cleanly), re-apply the 1 ms FTDI latency timer (doctor's helper; warn
+only), reopen and resume. NAK / decode / profile errors stay fatal. The outage
+is marked once on resume: CSV = a row with `t` (failure time) and every param
+column empty (same column count); JSONL = `{"event": "reconnect", "t", "gap_s",
+"port", "error"}`. `t` is seconds since the first sample (monotonic clock)
+across reconnects. One capture session file per run, across all reopens. The
+sim "reopens" the same simulated DME (no device node to lose) and never
+reconnects (a replay missing a frame stays a fatal error), so sim output is
+unchanged.
 
 ## Performance targets
 
@@ -159,7 +176,7 @@ data/profiles/*.toml      # per-SW-version param maps (package data)
 data/dtc_ms41.toml
 src/e36cli/
   transport.py  ds2.py  ms41.py  dtc.py  sim.py  capture.py
-  cli.py  live.py  doctor.py
+  cli.py  live.py  doctor.py  datalog.py (log: writer + burst/reconnect loop)
 tests/
 ```
 

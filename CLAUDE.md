@@ -109,6 +109,12 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   buffers on the existing Poller, sparkline/grid pure functions in
   dashboard.py, keys q/c/p/+/- reusing panel's controller + guarded clear).
   Hidden `--frames N` renders N frames then exits, for CI/non-TTY testing.
+- 2026-10-29: garage session 3 (cold start/warm-up/rev test; FTDI dropped
+  under continuous logging, burst loop worked) → `e36 log` is now resilient
+  (src/e36cli/datalog.py): `--burst 40` reopen by default, auto-reconnect
+  waiting for the device node (+ latency re-apply) with gap rows / JSONL
+  `reconnect` events into the same file, `--no-reconnect`, rows flushed as
+  written. 264 tests. Real drop → reconnect not yet seen on the car.
 - 2026-10-29: **garage session 3 — cold start → warm-up → rev test**, all
   read-only; findings in research/session3-coldstart.md, goldens
   tests/fixtures/car-koeo-{ident,dtc,live-all,scan}.jsonl + car-coldstart.csv

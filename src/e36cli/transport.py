@@ -92,7 +92,13 @@ class SerialTransport:
                 raise TransportTimeout(
                     f"wanted {n} bytes, got {len(partial)} within {deadline:.3f}s", partial
                 )
-            self._ser.timeout = remaining
+            try:
+                # pyserial re-runs tcgetattr/flock on every timeout change: on
+                # a vanished USB device that raises SerialException or a bare
+                # termios.error (not an OSError) — wrap it like a read error.
+                self._ser.timeout = remaining
+            except Exception as exc:
+                raise TransportError(f"{self.port}: {exc}") from exc
             try:
                 chunk = self._ser.read(n - len(buf))
             except OSError as exc:  # pyserial SerialException is an OSError:
