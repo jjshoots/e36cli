@@ -11,6 +11,7 @@ from e36cli import ds2, ms41
 from e36cli.capture import CaptureWriter
 from e36cli.dtc import decode_dtc_response, decode_hours_counter
 from e36cli.sim import SIM_IDENT, SimDtc, SimTransport, SimulatedDME
+from e36cli.transport import CapturingTransport
 
 DME = ds2.ADDR["DME"]
 
@@ -199,7 +200,7 @@ def test_unknown_fault_kind_rejected():
 def test_replay_serves_recorded_session_verbatim(tmp_path):
     writer = CaptureWriter("sim", tmp_path)
     live = ds2.DS2Client(
-        SimTransport(make_dme(dtcs=[SimDtc(code=100)]), capture=writer),
+        CapturingTransport(SimTransport(make_dme(dtcs=[SimDtc(code=100)])), writer),
         ds2.Timing(deadline=0.05, inter_frame_gap=0.0),
     )
     ident_data = live.query(DME, ms41.CMD_IDENT).data

@@ -16,7 +16,7 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from . import ds2
-from .capture import CaptureReader, CaptureWriter
+from .capture import CaptureReader
 from .ms41 import ParamSpec, Profile, load_profiles
 from .transport import TransportTimeout
 
@@ -191,14 +191,12 @@ class SimTransport:
         dme: SimulatedDME | None = None,
         replay: CaptureReader | None = None,
         rng: random.Random | None = None,
-        capture: CaptureWriter | None = None,
     ) -> None:
         if dme is None and replay is None:
             dme = SimulatedDME()
         self.dme = dme
         self._pairs = _replay_pairs(replay) if replay is not None else None
         self._rng = rng if rng is not None else random.Random(0)
-        self._capture = capture
         self._queue = bytearray()
         self._faults: list[_Fault] = []
         self._n_requests = 0
@@ -224,8 +222,6 @@ class SimTransport:
     # -- Transport protocol ----------------------------------------------------
 
     def send(self, data: bytes) -> None:
-        if self._capture is not None:
-            self._capture.record("tx", data)
         fault = self._pick_fault()
         self._n_requests += 1
 
@@ -256,29 +252,28 @@ class SimTransport:
         if len(self._queue) < n:
             partial = bytes(self._queue)
             self._queue.clear()
-            if partial and self._capture is not None:
-                self._capture.record("rx", partial)
             raise TransportTimeout(
                 f"sim wire silent: wanted {n} bytes, had {len(partial)}", partial
             )
         out = bytes(self._queue[:n])
         del self._queue[:n]
-        if self._capture is not None:
-            self._capture.record("rx", out)
         return out
 
-    def flush_input(self) -> None:
+    def flush_input(self) -> bytes:
+        dropped = bytes(self._queue)
         self._queue.clear()
+        return dropped
 
     def close(self) -> None:
-        if self._capture is not None:
-            self._capture.close()
+        pass
 
 
 def _replay_pairs(reader: CaptureReader) -> list[list]:
     """Pair each tx frame with the rx bytes that followed it (echo included)."""
     pairs: list[list] = []  # [tx_bytes, rx_bytearray, used]
     for ev in reader.events:
+        if ev.discarded:  # flushed unread before the next request: not a response
+            continue
         if ev.dir == "tx":
             pairs.append([ev.data, bytearray(), False])
         elif pairs:

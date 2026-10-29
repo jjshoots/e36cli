@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import contextlib
 import json
 import os
 import time
@@ -19,11 +18,23 @@ from . import dashboard as dashmod
 from . import datalog, ds2, live, ms41
 from . import dtc as dtcmod
 from . import panel as panelmod
-from .capture import CaptureWriter, default_capture_dir, list_sessions
-from .datalog import KeepOpenCapture
+from .capture import (
+    CaptureError,
+    CaptureSink,
+    CaptureWriter,
+    KeepOpenCapture,
+    default_capture_dir,
+    list_sessions,
+)
 from .doctor import hard_failure, run_checks
 from .sim import SimDtc, SimTransport, SimulatedDME
-from .transport import SerialTransport, Transport, TransportError
+from .transport import (
+    CapturingTransport,
+    SerialTransport,
+    Transport,
+    TransportError,
+    close_quietly,
+)
 
 app = typer.Typer(
     name="e36",
@@ -74,38 +85,48 @@ def main(
     )
 
 
-def make_transport(
-    cfg: Config, capture: CaptureWriter | KeepOpenCapture | None = None
-) -> Transport:
+def make_transport(cfg: Config, capture: CaptureSink | None = None) -> Transport:
+    """The single transport factory: every transport it returns is captured
+    (SPEC invariant 1). `capture` defaults to a fresh session file."""
     if capture is None:
         capture = CaptureWriter("sim" if cfg.sim else cfg.port, cfg.capture_dir)
+    inner: Transport
     if cfg.sim:
         if cfg.sim_fixture is not None:
-            sim = SimTransport.from_capture(cfg.sim_fixture)
-            sim._capture = capture
-            return sim
-        # E36CLI_SIM_DTCS="100,214" seeds fault codes into the simulated DME
-        # (demos and CLI tests; the sim has no other way in from the CLI).
-        codes = os.environ.get("E36CLI_SIM_DTCS", "")
-        try:
-            dtcs = [SimDtc(code=int(c)) for c in codes.split(",") if c.strip()]
-        except ValueError:
-            raise fail(f"E36CLI_SIM_DTCS must be comma-separated integers, got {codes!r}") from None
-        return SimTransport(SimulatedDME(dtcs=dtcs), capture=capture)
-    return SerialTransport(cfg.port, capture=capture)
+            inner = SimTransport.from_capture(cfg.sim_fixture)
+        else:
+            # E36CLI_SIM_DTCS="100,214" seeds fault codes into the simulated DME
+            # (demos and CLI tests; the sim has no other way in from the CLI).
+            codes = os.environ.get("E36CLI_SIM_DTCS", "")
+            try:
+                dtcs = [SimDtc(code=int(c)) for c in codes.split(",") if c.strip()]
+            except ValueError:
+                raise fail(
+                    f"E36CLI_SIM_DTCS must be comma-separated integers, got {codes!r}"
+                ) from None
+            inner = SimTransport(SimulatedDME(dtcs=dtcs))
+    else:
+        inner = SerialTransport(cfg.port)
+    return CapturingTransport(inner, capture)
 
 
 @contextmanager
 def make_client(cfg: Config) -> Iterator[ds2.DS2Client]:
-    """Open transport (+ always-on capture), close both on every exit path."""
+    """Open transport (+ always-on capture), close both on every exit path.
+
+    A close failure after another error is swallowed (STD-05): the user must
+    see the error that got us here, not pyserial's complaint about a dead port.
+    """
     try:
         transport = make_transport(cfg)
     except TransportError as exc:
         raise fail(str(exc)) from None
     try:
         yield ds2.DS2Client(transport)
-    finally:
-        transport.close()
+    except BaseException:
+        close_quietly(transport)
+        raise
+    transport.close()
 
 
 def fail(msg: str) -> typer.Exit:
@@ -136,6 +157,7 @@ def resolve_profile(cfg: Config, client: ds2.DS2Client) -> tuple[ms41.Profile, m
 WIRE_ERRORS = (
     ds2.DS2Error,
     TransportError,
+    CaptureError,
     ms41.ProfileError,
     ms41.DecodeError,
     dtcmod.DtcError,
@@ -613,13 +635,6 @@ LOG_EPILOG = (
 )
 
 
-def _close_quietly(transport: Transport) -> None:
-    # pyserial may raise on close() after the USB device vanished; that must
-    # not mask the error that got us here.
-    with contextlib.suppress(Exception):
-        transport.close()
-
-
 @app.command("log", epilog=LOG_EPILOG)
 def log_cmd(
     ctx: typer.Context,
@@ -677,13 +692,13 @@ def log_cmd(
             selected = live.select_names(profile, all_params, params)
             reads = live.plan(profile, names=selected)
         except BaseException:
-            _close_quietly(transport)
+            close_quietly(transport)
             raise
         specs = [p for p in profile.params if selected is None or p.name in selected]
         try:
             fh = out.open("w", newline="", encoding="utf-8")
         except OSError as exc:
-            _close_quietly(transport)
+            close_quietly(transport)
             raise fail(f"cannot write {out}: {exc}") from None
         with fh:
             logger = datalog.DataLogger(

@@ -15,7 +15,6 @@ request, so a fresh open needs no special handling.
 
 from __future__ import annotations
 
-import contextlib
 import csv
 import glob
 import json
@@ -26,8 +25,7 @@ from pathlib import Path
 from typing import IO
 
 from . import ds2, live, ms41
-from .capture import CaptureWriter
-from .transport import Transport, TransportError, set_ftdi_latency
+from .transport import Transport, TransportError, close_quietly, set_ftdi_latency
 
 # Seconds between device-node checks / reopen attempts while the link is down.
 RECONNECT_POLL_S = 0.5
@@ -37,36 +35,17 @@ RECONNECT_POLL_S = 0.5
 DEFAULT_BURST = 40
 
 # Errors that mean "the link is sick", worth a close + reopen: the transport
-# layer's own errors (pyserial SerialException is an OSError and is wrapped
-# into TransportError by SerialTransport; bare OSError is belt and braces),
-# plus the retryable DS2 errors the client already retried and gave up on.
-# NakResponse / decode / profile errors are deterministic — reopening the port
-# cannot fix them, so they stay fatal.
+# layer's own errors (SerialTransport wraps every pyserial/termios failure into
+# TransportError), plus the retryable DS2 errors the client already retried
+# and gave up on. NakResponse / decode / profile errors are deterministic, and
+# a CaptureError (disk full, unwritable dir) must stop the run: reopening the
+# port cannot fix any of them, so they stay fatal.
 LINK_ERRORS: tuple[type[BaseException], ...] = (
     TransportError,
-    OSError,
     ds2.Timeout,
     ds2.ChecksumError,
     ds2.EchoMismatch,
 )
-
-
-class KeepOpenCapture:
-    """Capture proxy whose close() is a no-op.
-
-    Transports close their capture on close(); during a log run we reopen the
-    port many times but want ONE capture session file for the whole run. The
-    owner closes the real writer at the very end.
-    """
-
-    def __init__(self, inner: CaptureWriter) -> None:
-        self.inner = inner
-
-    def record(self, direction: str, data: bytes) -> None:
-        self.inner.record(direction, data)
-
-    def close(self) -> None:
-        pass
 
 
 class SampleWriter:
@@ -193,9 +172,7 @@ class DataLogger:
 
     def close(self) -> None:
         if self.transport is not None:
-            # a dead device may refuse even close()
-            with contextlib.suppress(Exception):
-                self.transport.close()
+            close_quietly(self.transport)  # a dead device may refuse even close()
         self.transport = None
         self.client = None
 

@@ -3,6 +3,10 @@
 `recv(n, deadline)` takes a *duration* in seconds; internally it loops on the
 underlying read with the remaining time as the timeout, so a slow dribble of
 bytes succeeds while a silent wire raises `TransportTimeout` promptly.
+
+Transports move bytes and know nothing about capture: `CapturingTransport`
+wraps one and is the single place wire traffic is recorded (STD-02). The CLI's
+transport factory always applies it.
 """
 
 from __future__ import annotations
@@ -12,19 +16,21 @@ from dataclasses import dataclass
 from pathlib import Path
 from typing import Protocol, runtime_checkable
 
-from .capture import CaptureWriter
+from .capture import CaptureSink
+from .errors import E36Error
 
 
-class TransportError(Exception):
-    """Base for transport-level failures."""
-
-
-class TransportTimeout(TransportError):
-    """Deadline expired before `n` bytes arrived. `.partial` holds what did."""
+class TransportError(E36Error):
+    """Base for transport-level failures. `.partial` holds bytes received
+    before the failure, so the capture layer can still record them."""
 
     def __init__(self, msg: str, partial: bytes = b"") -> None:
         super().__init__(msg)
         self.partial = partial
+
+
+class TransportTimeout(TransportError):
+    """Deadline expired before `n` bytes arrived. `.partial` holds what did."""
 
 
 @runtime_checkable
@@ -33,16 +39,68 @@ class Transport(Protocol):
 
     def recv(self, n: int, deadline: float) -> bytes: ...
 
-    def flush_input(self) -> None: ...
+    def flush_input(self) -> bytes:
+        """Drop pending input; return the dropped bytes."""
+        ...
 
     def close(self) -> None: ...
+
+
+class CapturingTransport:
+    """Records every byte `inner` sends, receives or discards, and closes the
+    capture with it (SPEC invariant 1). The only place capture happens."""
+
+    def __init__(self, inner: Transport, capture: CaptureSink) -> None:
+        self._inner = inner
+        self._capture = capture
+
+    def send(self, data: bytes) -> None:
+        self._capture.record("tx", data)
+        self._inner.send(data)
+
+    def recv(self, n: int, deadline: float) -> bytes:
+        try:
+            data = self._inner.recv(n, deadline)
+        except TransportError as exc:
+            self._capture.record("rx", exc.partial)
+            raise
+        self._capture.record("rx", data)
+        return data
+
+    def flush_input(self) -> bytes:
+        dropped = self._inner.flush_input()
+        self._capture.record("rx", dropped, discarded=True)
+        return dropped
+
+    def close(self) -> None:
+        try:
+            self._inner.close()
+        finally:
+            self._capture.close()
+
+
+def close_quietly(transport: Transport) -> E36Error | None:
+    """Close without letting a close failure mask the error that got us here
+    (STD-05): pyserial raises on close() after the USB device vanished.
+    Returns the swallowed error for callers that want to mention it."""
+    try:
+        transport.close()
+    except E36Error as exc:
+        return exc
+    return None
 
 
 class SerialTransport:
     """pyserial-backed Transport. 9600 8E1 by default (DS2 on K-line).
 
     `ser` lets tests inject a fake serial object; it must expose `write`,
-    `read`, `flush`, `reset_input_buffer`, `close`, and a writable `timeout`.
+    `read`, `flush`, `in_waiting`, `reset_input_buffer`, `close`, and a
+    writable `timeout`.
+
+    Every pyserial call is wrapped into `TransportError` with `except
+    Exception`: on a vanished USB device pyserial raises SerialException (an
+    OSError) or a bare termios.error (NOT an OSError — seen live 2026-10-25,
+    car/research/1429373-probe.md), from reads, tcdrain and tcgetattr alike.
     """
 
     def __init__(
@@ -50,11 +108,9 @@ class SerialTransport:
         port: str,
         baudrate: int = 9600,
         parity: str = "E",
-        capture: CaptureWriter | None = None,
         ser: object | None = None,
     ) -> None:
         self.port = port
-        self._capture = capture
         if ser is not None:
             self._ser = ser
         else:
@@ -74,12 +130,10 @@ class SerialTransport:
                 raise TransportError(f"cannot open {port}: {exc}") from exc
 
     def send(self, data: bytes) -> None:
-        if self._capture is not None:
-            self._capture.record("tx", data)
         try:
             self._ser.write(data)
-            self._ser.flush()
-        except OSError as exc:
+            self._ser.flush()  # tcdrain: termios.error on a vanished device
+        except Exception as exc:  # see class docstring
             raise TransportError(f"{self.port}: {exc}") from exc
 
     def recv(self, n: int, deadline: float) -> bytes:
@@ -93,35 +147,30 @@ class SerialTransport:
                     f"wanted {n} bytes, got {len(partial)} within {deadline:.3f}s", partial
                 )
             try:
-                # pyserial re-runs tcgetattr/flock on every timeout change: on
-                # a vanished USB device that raises SerialException or a bare
-                # termios.error (not an OSError) — wrap it like a read error.
+                # pyserial re-runs tcgetattr/flock on every timeout change, and
+                # read() fails on a disconnected cable or a second process
+                # reading the same port (see class docstring)
                 self._ser.timeout = remaining
-            except Exception as exc:
-                raise TransportError(f"{self.port}: {exc}") from exc
-            try:
                 chunk = self._ser.read(n - len(buf))
-            except OSError as exc:  # pyserial SerialException is an OSError:
-                # disconnected cable or a second process reading the same port
-                raise TransportError(f"{self.port}: {exc}") from exc
-            if chunk:
-                if self._capture is not None:
-                    self._capture.record("rx", bytes(chunk))
-                buf.extend(chunk)
+            except Exception as exc:
+                raise TransportError(f"{self.port}: {exc}", bytes(buf)) from exc
+            buf.extend(chunk)
         return bytes(buf)
 
-    def flush_input(self) -> None:
+    def flush_input(self) -> bytes:
         try:
+            pending = self._ser.in_waiting
+            dropped = bytes(self._ser.read(pending)) if pending else b""
             self._ser.reset_input_buffer()
-        except Exception as exc:  # termios.error is NOT an OSError: it escapes
-            # the OSError wrappers when the USB device vanishes mid-session
-            # (seen live 2026-10-25, car/research/1429373-probe.md)
+        except Exception as exc:  # see class docstring
             raise TransportError(f"{self.port}: {exc}") from exc
+        return dropped
 
     def close(self) -> None:
-        self._ser.close()
-        if self._capture is not None:
-            self._capture.close()
+        try:
+            self._ser.close()
+        except Exception as exc:  # see class docstring
+            raise TransportError(f"{self.port}: close failed: {exc}") from exc
 
 
 @dataclass

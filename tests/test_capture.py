@@ -1,6 +1,8 @@
 import json
 
-from e36cli.capture import CaptureReader, CaptureWriter, list_sessions
+import pytest
+
+from e36cli.capture import CaptureError, CaptureReader, CaptureWriter, list_sessions
 
 
 def test_lazy_creation(tmp_path):
@@ -70,3 +72,40 @@ def test_list_sessions(tmp_path):
 
 def test_list_sessions_missing_dir(tmp_path):
     assert list_sessions(tmp_path / "nope") == []
+
+
+# --- failure + lifecycle rules (STANDARDS.md STD-02(c)(d), STD-04) -----------
+
+
+def unwritable_dir(tmp_path):
+    blocker = tmp_path / "file"
+    blocker.write_text("not a directory")
+    return blocker / "captures"
+
+
+def test_unwritable_capture_dir_raises_capture_error(tmp_path):
+    w = CaptureWriter("p", directory=unwritable_dir(tmp_path))
+    with pytest.raises(CaptureError, match="cannot write capture"):
+        w.record("tx", b"\x12")
+
+
+def test_record_after_close_is_terminal(tmp_path):
+    w = CaptureWriter("p", directory=tmp_path)
+    w.record("tx", b"\x12")
+    w.close()
+    with pytest.raises(CaptureError):
+        w.record("rx", b"\x12")
+    assert len(list(tmp_path.glob("*.jsonl"))) == 1  # never a second session file
+
+
+def test_reader_counts_non_object_and_unknown_dir_lines_as_malformed(tmp_path):
+    path = tmp_path / "c.jsonl"
+    path.write_text(
+        '{"event": "session", "version": 1}\n5\n[]\n'
+        '{"t": 1, "dir": "sideways", "data": "12"}\n'
+        '{"t": 2, "dir": "rx", "data": "12", "discarded": true}\n'
+    )
+    r = CaptureReader(path)
+    assert r.malformed == 3
+    (ev,) = r.events
+    assert ev.discarded is True

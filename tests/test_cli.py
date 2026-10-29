@@ -423,3 +423,21 @@ def test_dtc_read_shows_fault_age(monkeypatch):
     assert result.exit_code == 0, result.output
     assert "Age (h)" in result.output
     assert "30.0" in result.output
+
+
+# --- capture failure is fatal everywhere (STANDARDS.md STD-02(c)) -------------
+
+
+@pytest.mark.parametrize(
+    "args",
+    [("ident",), ("dtc", "read"), ("live", "--once"), ("log", "OUT", "--samples", "3")],
+)
+def test_unwritable_capture_dir_is_a_one_line_fatal_error(tmp_path, monkeypatch, args):
+    blocker = tmp_path / "file"
+    blocker.write_text("not a directory")
+    monkeypatch.setenv(CAPTURE_DIR_ENV, str(blocker / "captures"))
+    args = tuple(str(tmp_path / "out.csv") if a == "OUT" else a for a in args)
+    result = runner.invoke(app, ["--sim", *args])
+    assert result.exit_code == 1
+    assert isinstance(result.exception, SystemExit)  # no traceback
+    assert "cannot write capture" in result.output

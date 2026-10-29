@@ -10,8 +10,11 @@ spec in the same change.
 ## Non-negotiable invariants
 
 1. **Capture everything.** Every byte TX/RX on a real serial port is appended to a
-   session capture file (JSONL, timestamped) under `~/.local/share/e36cli/captures/`.
-   No flag disables this. Captures are the seed corpus for the simulator.
+   session capture file (JSONL, timestamped) under `~/.local/share/e36cli/captures/`
+   — including input flushed unread before a request (marked `"discarded": true`).
+   No flag disables this: the one transport factory wraps every transport in
+   `CapturingTransport`. A capture write failure is fatal on every command,
+   never a link error. Captures are the seed corpus for the simulator.
 2. **Reads are free, writes are guarded.** Commands that modify ECU state
    (`dtc clear`, the panel's `c` key, future activations/adaptation resets)
    require `--yes` or an interactive confirmation. Component activation must
@@ -109,13 +112,14 @@ render. Transports are closed on every CLI exit path (capture files flush per
 event).
 
 `e36 log` policy (src/e36cli/datalog.py — CLI/poller layer; the DS2 and
-transport layers know nothing of it): link errors (`TransportError`/`OSError`,
-incl. pyserial's FTDI-drop `SerialException`, plus `Timeout`/`ChecksumError`/
+transport layers know nothing of it): link errors (`TransportError` —
+`SerialTransport` wraps every pyserial/termios failure into it, incl. the
+FTDI-drop `SerialException` — plus `Timeout`/`ChecksumError`/
 `EchoMismatch` after the client's retries) close the port, warn one line on
 stderr, wait for the device node (the `--port` path; if that is a
 `/dev/ttyUSB*` and gone, the only `/dev/ttyUSB*` present; poll 0.5 s; Ctrl-C
 exits cleanly), re-apply the 1 ms FTDI latency timer (doctor's helper; warn
-only), reopen and resume. NAK / decode / profile errors stay fatal. The outage
+only), reopen and resume. NAK / decode / profile / capture errors stay fatal. The outage
 is marked once on resume: CSV = a row with `t` (failure time) and every param
 column empty (same column count); JSONL = `{"event": "reconnect", "t", "gap_s",
 "port", "error"}`. `t` is seconds since the first sample (monotonic clock)

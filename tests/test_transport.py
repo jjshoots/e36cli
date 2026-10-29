@@ -2,11 +2,14 @@ import time
 
 import pytest
 
-from e36cli.capture import CaptureReader, CaptureWriter
+from e36cli.capture import CaptureError, CaptureReader, CaptureWriter
 from e36cli.transport import (
+    CapturingTransport,
     SerialTransport,
     Transport,
+    TransportError,
     TransportTimeout,
+    close_quietly,
     ftdi_latency_sysfs_path,
     set_ftdi_latency,
 )
@@ -15,8 +18,9 @@ from e36cli.transport import (
 class FakeSerial:
     """Scripted serial double: each read() returns the next chunk (or b'')."""
 
-    def __init__(self, chunks=()):
+    def __init__(self, chunks=(), pending=b""):
         self.chunks = list(chunks)
+        self.pending = bytearray(pending)  # unread input sitting in the driver
         self.written = bytearray()
         self.timeout = None
         self.timeouts_seen = []
@@ -30,8 +34,16 @@ class FakeSerial:
     def flush(self):
         pass
 
+    @property
+    def in_waiting(self):
+        return len(self.pending)
+
     def read(self, n):
         self.timeouts_seen.append(self.timeout)
+        if self.pending:
+            out = bytes(self.pending[:n])
+            del self.pending[:n]
+            return out
         if self.chunks:
             chunk = self.chunks.pop(0)
             return chunk[:n]
@@ -41,15 +53,16 @@ class FakeSerial:
 
     def reset_input_buffer(self):
         self.input_flushed += 1
+        self.pending.clear()
 
     def close(self):
         self.closed = True
 
 
-def make_transport(chunks=(), capture=None):
-    fake = FakeSerial(chunks)
-    t = SerialTransport("/dev/fake", capture=capture, ser=fake)
-    return t, fake
+def make_transport(chunks=(), capture=None, pending=b""):
+    fake = FakeSerial(chunks, pending)
+    t = SerialTransport("/dev/fake", ser=fake)
+    return (t if capture is None else CapturingTransport(t, capture)), fake
 
 
 def test_satisfies_protocol():
@@ -103,8 +116,7 @@ def test_capture_hook_records_tx_and_rx(tmp_path):
     r = CaptureReader(cap.path)
     assert [(e.dir, e.data) for e in r.events] == [
         ("tx", b"\x12\x04\x00\x16"),
-        ("rx", b"\xa0"),
-        ("rx", b"\x01"),
+        ("rx", b"\xa0\x01"),
     ]
 
 
@@ -152,6 +164,8 @@ def test_flush_input_wraps_non_oserror_as_transport_error():
     class FakeSer:
         timeout = 0.1
 
+        in_waiting = 0
+
         def reset_input_buffer(self):
             raise TermiosLikeError(5, "Input/output error")
 
@@ -161,3 +175,72 @@ def test_flush_input_wraps_non_oserror_as_transport_error():
     tr = SerialTransport("/dev/fake", ser=FakeSer())
     with pytest.raises(TransportError):
         tr.flush_input()
+
+
+# --- capture completeness + failure wrapping (STANDARDS.md STD-02/04/05) ------
+
+
+class TermiosError(Exception):
+    """Stands in for termios.error: NOT an OSError."""
+
+
+def test_flush_input_records_discarded_bytes(tmp_path):
+    # late response / noise sitting unread in the driver before a request
+    cap = CaptureWriter("/dev/fake", directory=tmp_path)
+    t, fake = make_transport(capture=cap, pending=b"\x12\x05\xa0")
+    assert t.flush_input() == b"\x12\x05\xa0"
+    t.close()
+    assert fake.input_flushed == 1 and fake.closed
+    (ev,) = CaptureReader(cap.path).events
+    assert (ev.dir, ev.data, ev.discarded) == ("rx", b"\x12\x05\xa0", True)
+
+
+def test_recv_failure_mid_read_still_captures_partial(tmp_path):
+    class DyingSerial(FakeSerial):
+        def read(self, n):
+            if self.chunks:
+                return super().read(n)
+            raise OSError(5, "device disconnected")
+
+    cap = CaptureWriter("/dev/fake", directory=tmp_path)
+    t = CapturingTransport(SerialTransport("/dev/fake", ser=DyingSerial([b"\xa0"])), cap)
+    with pytest.raises(TransportError) as info:
+        t.recv(3, deadline=1.0)
+    assert info.value.partial == b"\xa0"
+    cap.close()
+    assert [e.data for e in CaptureReader(cap.path).events] == [b"\xa0"]
+
+
+@pytest.mark.parametrize("method", ["flush", "write"])
+def test_send_wraps_termios_error(method):
+    fake = FakeSerial()
+
+    def boom(*_):
+        raise TermiosError(5, "Input/output error")
+
+    setattr(fake, method, boom)
+    with pytest.raises(TransportError):
+        SerialTransport("/dev/fake", ser=fake).send(b"\x12")
+
+
+def test_close_wraps_error_and_still_closes_capture(tmp_path):
+    fake = FakeSerial()
+
+    def boom():
+        raise TermiosError(5, "Input/output error")
+
+    fake.close = boom
+    cap = CaptureWriter("/dev/fake", directory=tmp_path)
+    t = CapturingTransport(SerialTransport("/dev/fake", ser=fake), cap)
+    t.send(b"\x12")
+    with pytest.raises(TransportError):
+        t.close()
+    with pytest.raises(CaptureError):  # the capture was closed regardless
+        cap.record("tx", b"\x12")
+
+
+def test_close_quietly_returns_instead_of_raising():
+    fake = FakeSerial()
+    fake.close = lambda: (_ for _ in ()).throw(TermiosError("gone"))
+    assert isinstance(close_quietly(SerialTransport("/dev/fake", ser=fake)), TransportError)
+    assert close_quietly(SerialTransport("/dev/fake", ser=FakeSerial())) is None

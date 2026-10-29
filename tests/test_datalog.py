@@ -20,7 +20,7 @@ from typer.testing import CliRunner
 from e36cli import cli, datalog, live, ms41
 from e36cli.cli import CAPTURE_DIR_ENV, app
 from e36cli.sim import SimTransport, SimulatedDME
-from e36cli.transport import LatencyResult, SerialTransport
+from e36cli.transport import CapturingTransport, LatencyResult, SerialTransport
 
 runner = CliRunner()
 
@@ -80,6 +80,10 @@ class FlakySerial:
         del q[:n]
         return chunk
 
+    @property
+    def in_waiting(self):
+        return len(self.sim._queue)
+
     def reset_input_buffer(self):
         # A fresh open must not flush away junk injected *after* the send.
         self.sim._queue.clear()
@@ -107,7 +111,7 @@ class FakePort:
         fail_after = self.plan[i] if i < len(self.plan) else None
         ser = FlakySerial(self.dme, fail_after, junk=self.junk_on_reopen if i else b"")
         self.serials.append(ser)
-        return SerialTransport(cfg.port, capture=capture, ser=ser)
+        return CapturingTransport(SerialTransport(cfg.port, ser=ser), capture)
 
 
 @pytest.fixture
@@ -462,7 +466,7 @@ class SerialPort(FakePort):
         fail_after = self.plan[i] if i < len(self.plan) else None
         ser = self.ser_cls(self.dme, fail_after)
         self.serials.append(ser)
-        return SerialTransport(cfg.port, capture=capture, ser=ser)
+        return CapturingTransport(SerialTransport(cfg.port, ser=ser), capture)
 
 
 def test_log_ident_drop_with_raising_close_is_a_clean_error(tmp_path, port_node, monkeypatch):
