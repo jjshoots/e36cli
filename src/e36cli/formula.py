@@ -11,6 +11,7 @@ import ast
 import math
 import operator
 from collections.abc import Callable
+from typing import Literal
 
 from .errors import E36Error
 
@@ -66,7 +67,10 @@ def _build(node: ast.AST, expr: str) -> Callable[[float], float]:
     raise FormulaError(f"{type(node).__name__} not allowed in formula {expr!r}")
 
 
-def decode_raw(data: bytes, size: int, signed: bool = False, endian: str = "big") -> int:
+Endian = Literal["big", "little"]
+
+
+def decode_raw(data: bytes, size: int, signed: bool = False, endian: Endian = "big") -> int:
     """Decode `size` raw bytes into an integer per profile field settings."""
     if len(data) != size:
         raise ValueError(f"expected {size} bytes, got {len(data)}")

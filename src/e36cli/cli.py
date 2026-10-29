@@ -10,7 +10,7 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from pathlib import Path
-from typing import ParamSpec, TypeVar
+from typing import Any, ParamSpec, TypeVar
 
 import typer
 from rich.console import Console
@@ -384,7 +384,7 @@ def live_cmd(
                     except policy.FAULT_POLL_NONFATAL as exc:
                         faults_error = str(exc)  # non-fatal: params still print
                 if json_out:
-                    doc = {
+                    doc: dict[str, Any] = {
                         "profile": profile.id,
                         "params": {
                             v.name: {
@@ -397,7 +397,7 @@ def live_cmd(
                         },
                     }
                     if dtc_on:
-                        if faults_error is not None:
+                        if faults_error is not None or faults is None:
                             doc["faults_error"] = faults_error
                         else:
                             doc["faults"] = [
@@ -473,7 +473,7 @@ def panel_cmd(
                 try:
                     resp = client.query(ds2.ADDR["DME"], ms41.CMD_IDENT)
                     ident = ms41.parse_ident(resp.data)
-                except (*policy.LINK, ds2.NakResponse, ms41.DecodeError):
+                except policy.OPTIONAL_READ:
                     ident = None  # header just omits it
             panelmod.run_panel(
                 client,

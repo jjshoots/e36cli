@@ -32,9 +32,14 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
 - Captures land in `~/.local/share/e36cli/captures/`; copy interesting ones
   into `car/captures/` as goldens — **redact the ident serial first** (zeroed
   with recomputed checksum; a test enforces it, see car/README.md).
-- Lint/format is ruff via pre-commit (`uvx ruff check --fix` + `uvx ruff format`,
-  config in pyproject). CI (.github/workflows/ci.yml) enforces lint + tests on
-  3.11/3.12 + wheel smoke-test, and must stay green.
+- Lint/format is ruff via pre-commit (`uvx ruff check --fix src tests` +
+  `uvx ruff format src tests` — never bare: it reformats code in markdown).
+  `uv run mypy` (strict, src). CI (.github/workflows/ci.yml) enforces lint +
+  mypy + tests on 3.11–3.14 + a wheel smoke-test, and must stay green; the
+  release workflow calls it as its gate and publishes the tested artifact.
+- Code is held to `STANDARDS.md`; error classification lives only in
+  `policy.py`, capture only in `CapturingTransport`, ECU writes only in
+  `writes.py`.
 
 ## State / history
 

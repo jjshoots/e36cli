@@ -12,7 +12,7 @@ from __future__ import annotations
 
 import random
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 
 from . import ds2
@@ -268,25 +268,32 @@ class SimTransport:
         pass
 
 
-def _replay_pairs(reader: CaptureReader) -> list[list]:
+@dataclass
+class _ReplayPair:
+    tx: bytes
+    rx: bytearray = field(default_factory=bytearray)  # echo included
+    used: bool = False
+
+
+def _replay_pairs(reader: CaptureReader) -> list[_ReplayPair]:
     """Pair each tx frame with the rx bytes that followed it (echo included)."""
-    pairs: list[list] = []  # [tx_bytes, rx_bytearray, used]
+    pairs: list[_ReplayPair] = []
     for ev in reader.events:
         if ev.discarded:  # flushed unread before the next request: not a response
             continue
         if ev.dir == "tx":
-            pairs.append([ev.data, bytearray(), False])
+            pairs.append(_ReplayPair(ev.data))
         elif pairs:
-            pairs[-1][1].extend(ev.data)
+            pairs[-1].rx.extend(ev.data)
     return pairs
 
 
-def _replay_lookup(pairs: list[list], request: bytes) -> bytes:
+def _replay_lookup(pairs: list[_ReplayPair], request: bytes) -> bytes:
     for pair in pairs:  # prefer the first unused exact match (preserves order)
-        if not pair[2] and pair[0] == request:
-            pair[2] = True
-            return bytes(pair[1])
+        if not pair.used and pair.tx == request:
+            pair.used = True
+            return bytes(pair.rx)
     for pair in pairs:  # fall back to reusing any exact match
-        if pair[0] == request:
-            return bytes(pair[1])
+        if pair.tx == request:
+            return bytes(pair.rx)
     return b""  # not in the recording: silence

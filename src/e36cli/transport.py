@@ -90,6 +90,25 @@ def close_quietly(transport: Transport) -> E36Error | None:
     return None
 
 
+class SerialLike(Protocol):
+    """The slice of pyserial's Serial that SerialTransport uses (tests inject fakes)."""
+
+    timeout: float | None
+
+    @property
+    def in_waiting(self) -> int: ...
+
+    def write(self, data: bytes, /) -> int | None: ...
+
+    def flush(self) -> None: ...
+
+    def read(self, size: int = 1, /) -> bytes: ...
+
+    def reset_input_buffer(self) -> None: ...
+
+    def close(self) -> None: ...
+
+
 class SerialTransport:
     """pyserial-backed Transport. 9600 8E1 by default (DS2 on K-line).
 
@@ -108,9 +127,10 @@ class SerialTransport:
         port: str,
         baudrate: int = 9600,
         parity: str = "E",
-        ser: object | None = None,
+        ser: SerialLike | None = None,
     ) -> None:
         self.port = port
+        self._ser: SerialLike
         if ser is not None:
             self._ser = ser
         else:

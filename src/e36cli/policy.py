@@ -33,6 +33,10 @@ POLL_TRANSIENT: ErrorTypes = (*LINK, ds2.NakResponse)
 # keeps the last-known fault list with a "read failed" note.
 FAULT_POLL_NONFATAL: ErrorTypes = (*POLL_TRANSIENT, dtcmod.DtcError, ms41.DecodeError)
 
+# A best-effort read whose failure only drops a detail (the panel's ident
+# header under --profile): wire trouble, NAK or an undecodable answer.
+OPTIONAL_READ: ErrorTypes = (*POLL_TRANSIENT, ms41.DecodeError)
+
 # `e36 log`: close the port, wait for the device, reopen and resume. A NAK or
 # a decode/profile error is deterministic — reopening cannot fix it — so fatal.
 LOG_RECONNECT: ErrorTypes = LINK

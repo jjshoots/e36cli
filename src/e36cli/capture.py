@@ -18,7 +18,7 @@ import time
 from dataclasses import dataclass, field
 from datetime import datetime
 from pathlib import Path
-from typing import IO, Protocol
+from typing import IO, Any, Protocol
 
 from .errors import E36Error
 
@@ -144,7 +144,7 @@ class CaptureReader:
     """Parses a capture JSONL file. Tolerates (and counts) malformed lines."""
 
     path: Path
-    header: dict = field(init=False, default_factory=dict)
+    header: dict[str, Any] = field(init=False, default_factory=dict)
     events: list[CaptureEvent] = field(init=False, default_factory=list)
     malformed: int = field(init=False, default=0)
 

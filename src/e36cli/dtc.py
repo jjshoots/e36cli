@@ -15,6 +15,7 @@ import tomllib
 from dataclasses import dataclass
 from functools import lru_cache
 from pathlib import Path
+from typing import Any
 
 from . import ds2, ms41
 from .errors import E36Error
@@ -81,7 +82,7 @@ class Dtc:
 
 
 @lru_cache(maxsize=1)
-def _db(path_str: str | None = None) -> dict:
+def _db(path_str: str | None = None) -> dict[str, Any]:
     path = Path(path_str) if path_str else data_dir() / "dtc_ms41.toml"
     with path.open("rb") as fh:
         return tomllib.load(fh)

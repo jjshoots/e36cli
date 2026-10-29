@@ -13,6 +13,9 @@ classifiers = [
     "Operating System :: POSIX :: Linux",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3.14",
+    "Typing :: Typed",
     "Topic :: Scientific/Engineering :: Interface Engine/Protocol Translator",
 ]
 requires-python = ">=3.11"
@@ -30,6 +33,8 @@ dev = [
     "pytest>=8.0",
     "hypothesis>=6.100",
     "pre-commit>=3.7",
+    "mypy>=1.13",
+    "types-pyserial>=3.5",
 ]
 
 [build-system]
@@ -48,6 +53,12 @@ packages = ["src/e36cli"]
 testpaths = ["tests"]
 addopts = "-q"
 
+[tool.mypy]
+# STANDARDS.md STD-20: strict on src, enforced in CI (the `typecheck` job).
+files = ["src"]
+python_version = "3.11"
+strict = true
+
 [tool.ruff]
 line-length = 100
 target-version = "py311"
@@ -64,9 +75,3 @@ ignore = [
 "tests/*" = [
     "RUF012",  # mutable class attrs are fine on test fakes
 ]
-# TODO: drop once concurrent profile work on ms41.py lands; then `ruff check --fix` it
-"src/e36cli/ms41.py" = ["UP035", "UP037", "E501"]
-
-[tool.ruff.format]
-# TODO: drop with the per-file-ignores above (same concurrent-edit reason)
-exclude = ["src/e36cli/ms41.py"]

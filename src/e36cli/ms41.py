@@ -13,23 +13,24 @@ from __future__ import annotations
 
 import math
 import tomllib
+from collections.abc import Callable
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Callable
+from typing import Any
 
 from .errors import E36Error
-from .formula import compile_formula, decode_raw
+from .formula import Endian, compile_formula, decode_raw
 
 MAX_READ_CHUNK = 0xF8
 GENERIC_PROFILE_ID = "ms41-generic"
 
 # Request payload builders (frame addr/len/checksum are the DS2 layer's job).
 CMD_IDENT = bytes([0x00])
-CMD_DTC_PREPARE = bytes([0x04, 0x00])   # returns operating-hours counter; may answer A1 busy
-CMD_DTC_READ = bytes([0x04, 0x01])      # stored faults
-CMD_DTC_READ_BARE = bytes([0x04])       # alternate form seen in garagediag
-CMD_DTC_SHADOW = bytes([0x14, 0x01])    # shadow fault memory (11-byte records)
-CMD_DTC_CLEAR = bytes([0x05])           # WRITE operation
+CMD_DTC_PREPARE = bytes([0x04, 0x00])  # returns operating-hours counter; may answer A1 busy
+CMD_DTC_READ = bytes([0x04, 0x01])  # stored faults
+CMD_DTC_READ_BARE = bytes([0x04])  # alternate form seen in garagediag
+CMD_DTC_SHADOW = bytes([0x14, 0x01])  # shadow fault memory (11-byte records)
+CMD_DTC_CLEAR = bytes([0x05])  # WRITE operation
 
 
 class ProfileError(E36Error, ValueError):
@@ -105,12 +106,12 @@ class ParamSpec:
     verified: bool = False
     verified_source: str = ""  # capture file / session that proved this param
     signed: bool = False
-    endian: str = "little"  # raw 0x06 RAM reads are little-endian
+    endian: Endian = "little"  # raw 0x06 RAM reads are little-endian
     mask: int | None = None
     core: bool = False  # dashboard-core subset (default for live/log)
     _fn: Callable[[float], float] = field(repr=False, compare=False, default=None)  # type: ignore[assignment]
 
-    def decode(self, data: bytes) -> "Value":
+    def decode(self, data: bytes) -> Value:
         raw = decode_raw(data, self.size, signed=self.signed, endian=self.endian)
         x = raw & self.mask if self.mask is not None else raw
         return Value(
@@ -156,7 +157,7 @@ class Profile:
 class ReadRequest:
     """One contiguous 0x06 memory read covering one or more params."""
 
-    addr: int   # 24-bit absolute address
+    addr: int  # 24-bit absolute address
     count: int  # bytes to read
     params: tuple[tuple[ParamSpec, int], ...]  # (param, offset within this block)
 
@@ -195,7 +196,7 @@ _PARAM_KEYS = _PARAM_REQUIRED | {
 }
 
 
-def _check_keys(table: dict, allowed: frozenset[str], required: frozenset[str]) -> None:
+def _check_keys(table: dict[str, Any], allowed: frozenset[str], required: frozenset[str]) -> None:
     unknown = sorted(set(table) - allowed)
     if unknown:
         raise ValueError(f"unknown key(s) {unknown} (allowed: {sorted(allowed)})")
@@ -236,7 +237,9 @@ def _load_profile_file(path: Path) -> Profile:
     )
 
 
-def _validate_doc(doc: dict) -> tuple[str, str, tuple[str, ...], list[dict]]:
+def _validate_doc(
+    doc: dict[str, Any],
+) -> tuple[str, str, tuple[str, ...], list[dict[str, Any]]]:
     """Check the document shape and [profile] table; params are checked one by one."""
     _check_keys(doc, _DOC_KEYS, frozenset({"profile"}))
     head = doc["profile"]
@@ -253,7 +256,9 @@ def _validate_doc(doc: dict) -> tuple[str, str, tuple[str, ...], list[dict]]:
         raise ValueError(f"[profile] description must be a string, got {desc!r}")
     # A bare string would iterate as characters and never match an ECU id.
     if not isinstance(match_hw, list) or not all(isinstance(h, str) and h for h in match_hw):
-        raise ValueError(f"[profile] match_hw must be a list of non-empty strings, got {match_hw!r}")
+        raise ValueError(
+            f"[profile] match_hw must be a list of non-empty strings, got {match_hw!r}"
+        )
     entries = doc.get("param", [])
     if not isinstance(entries, list) or not all(isinstance(e, dict) for e in entries):
         raise ValueError("param must be an array of tables ([[param]]), not a table or value")
@@ -268,7 +273,7 @@ def _is_text(v: object) -> bool:
     return isinstance(v, str) and bool(v.strip())
 
 
-def _validate_param(entry: dict) -> ParamSpec:
+def _validate_param(entry: dict[str, Any]) -> ParamSpec:
     """Build + fully validate one ParamSpec; every defect raises at load time."""
     _check_keys(entry, _PARAM_KEYS, _PARAM_REQUIRED)
     spec = ParamSpec(
@@ -292,7 +297,9 @@ def _validate_param(entry: dict) -> ParamSpec:
         if not isinstance(getattr(spec, key), str):
             raise ValueError(f"{key} must be a string, got {getattr(spec, key)!r}")
     if not _is_text(spec.source):
-        raise ValueError(f"source must be a non-empty string (SPEC invariant 3), got {spec.source!r}")
+        raise ValueError(
+            f"source must be a non-empty string (SPEC invariant 3), got {spec.source!r}"
+        )
     if not _is_int(spec.addr) or not 0 <= spec.addr <= 0xFFFFFF:
         raise ValueError(f"addr must be a 24-bit integer, got {spec.addr!r}")
     if not _is_int(spec.size) or spec.size not in (1, 2, 4):
@@ -303,7 +310,11 @@ def _validate_param(entry: dict) -> ParamSpec:
         raise ValueError(f"mask must be a non-negative integer, got {spec.mask!r}")
     if spec.mask is not None and spec.signed:
         raise ValueError("signed + mask is ambiguous (mask a sign-extended value?); pick one")
-    if not isinstance(spec.signed, bool) or not isinstance(spec.verified, bool) or not isinstance(spec.core, bool):
+    if (
+        not isinstance(spec.signed, bool)
+        or not isinstance(spec.verified, bool)
+        or not isinstance(spec.core, bool)
+    ):
         raise ValueError("signed/verified/core must be booleans")
     if not isinstance(spec.verified_source, str):
         raise ValueError(f"verified_source must be a string, got {spec.verified_source!r}")
@@ -347,7 +358,9 @@ def match_profile(ident: Ident | str, profiles: dict[str, Profile] | None = None
     try:
         return profiles[GENERIC_PROFILE_ID]
     except KeyError:
-        raise ProfileError(f"no profile matches ECU id {ecu_id!r} and no generic fallback") from None
+        raise ProfileError(
+            f"no profile matches ECU id {ecu_id!r} and no generic fallback"
+        ) from None
 
 
 def plan_reads(
@@ -401,14 +414,16 @@ def plan_reads(
 
 def build_read_payload(req: ReadRequest) -> bytes:
     """`06 00 SEG HI LO CNT` — mode 0x00 = read; 24-bit big-endian address."""
-    return bytes([
-        0x06,
-        0x00,
-        (req.addr >> 16) & 0xFF,
-        (req.addr >> 8) & 0xFF,
-        req.addr & 0xFF,
-        req.count,
-    ])
+    return bytes(
+        [
+            0x06,
+            0x00,
+            (req.addr >> 16) & 0xFF,
+            (req.addr >> 8) & 0xFF,
+            req.addr & 0xFF,
+            req.count,
+        ]
+    )
 
 
 def decode_reads(profile: Profile, req: ReadRequest, data: bytes) -> dict[str, Value]:
