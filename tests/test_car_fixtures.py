@@ -125,3 +125,42 @@ def test_car_live_once_table_has_no_unverified_marker_on_promoted_params():
     # promoted params render without '?'
     rpm_line = next(ln for ln in result.output.splitlines() if "Engine RPM" in ln)
     assert "?" not in rpm_line
+
+
+# --- garage session 3, 2026-10-29: key on, engine off, cold (research/session3-coldstart.md)
+
+
+def test_car_koeo_live_all_cold_engine_off():
+    result = replay("car-koeo-live-all.jsonl", "live", "--once", "--all", "--json", "--no-dtc")
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.output)
+    assert doc["profile"] == "ms41.0-1429373"
+    p = doc["params"]
+    assert p["rpm"]["value"] == 0.0
+    assert p["maf"]["value"] == 0.0
+    # cold engine at ambient: coolant and IAT agree (raw 104 both) -> low-end temp scaling
+    assert p["coolant_temp"]["value"] == pytest.approx(104 * 0.747 - 48)  # 29.688 C
+    assert p["iat"]["value"] == pytest.approx(104 * 0.747 - 48)
+    assert p["battery"]["value"] == pytest.approx(114 * 0.10196)  # 11.62 V KOEO
+    # stft both banks parked at the 0x8000 zero point with the engine off
+    assert p["stft_b1"]["raw"] == 32768
+    assert p["stft_b2"]["raw"] == 32768
+
+
+def test_car_koeo_dtc_ages_advanced_frequencies_unchanged():
+    result = replay("car-koeo-dtc.jsonl", "dtc", "read")
+    assert result.exit_code == 0, result.output
+    assert "3 stored fault" in result.output
+    for code in ("217", "25", "52"):
+        assert re.search(rf"\b{code}\b", result.output)
+    # hours counter 0x43F8 (was 0x43F2 on 2026-10-25): ages 25.7/25.7/25.5 h
+    assert "25.7" in result.output
+    assert "25.5" in result.output
+
+
+def test_car_koeo_scan_ews_and_gm_answer():
+    result = replay("car-koeo-scan.jsonl", "scan")
+    assert result.exit_code == 0, result.output
+    assert "88 36 22 77" in result.output  # EWS 0x44 ident
+    assert "88 36 94 82" in result.output  # GM 0x00 ident
+    assert "3 module(s) responding" in result.output

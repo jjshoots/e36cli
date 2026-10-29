@@ -109,3 +109,20 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   buffers on the existing Poller, sparkline/grid pure functions in
   dashboard.py, keys q/c/p/+/- reusing panel's controller + guarded clear).
   Hidden `--frames N` renders N frames then exits, for CI/non-TTY testing.
+- 2026-10-29: **garage session 3 — cold start → warm-up → rev test**, all
+  read-only; findings in research/session3-coldstart.md, goldens
+  tests/fixtures/car-koeo-{ident,dtc,live-all,scan}.jsonl + car-coldstart.csv
+  + car-revtest.csv (3 new replay tests). Faults unchanged (217/25/52, hours
+  counter advancing). KOEO 30 °C coolant≈IAT (low-end temp scaling OK);
+  battery 11.62 V KOEO / 9.99 crank / ~14.2 running → alternator fine, battery
+  weak (multimeter pending). Scan: EWS 0x44 + GM 0x00 answer on KKL; IKE/ABS
+  silent. FTDI died under continuous `log --all` and once fell off USB until
+  replugged; 40-sample burst loop held for 13 bursts. Measured 0.96 Hz --all /
+  1.56 Hz core (~80 ms/request) — wire-bound, 0x0B batch telegram needed.
+  B2 closed loop at 54–60 °C. **Profile is wrong in places (not yet changed):**
+  `ignition_advance` is frozen at raw 128 (engine off too) → its 10-25
+  verification was bogus, demote; 0xE98D (`knock_retard`) behaves like the real
+  ignition angle; front O2 "volts" are an inverted rail-to-rail count;
+  `ltft_*` are lambda-controller integrators (true B2 LTFT ≈ +12 %, supports
+  x/4096); `load` ~90× too small; `operating_state_bits` dead. Bank 1: O2 flat
+  + heater DTC 25 ⇒ check B1 connector. Follow-ups in TODO.md.

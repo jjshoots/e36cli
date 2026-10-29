@@ -58,6 +58,38 @@ record and continue. Everything is auto-captured to
 - **Session 2 (partial) — 2026-10-25, engine running:** throttle-blip
   coherence check DONE by the owner via `e36 live` — RPM, TPS and MAF moved
   together on blips, confirming decode coherence beyond static plausibility.
+- **Session 3 — 2026-10-29, cold start → warm-up → rev test: DONE**
+  (read-only). Step 9 answered: EWS 0x44 and GM 0x00 answer ident on the KKL
+  cable, IKE 0x80 / ABS 0x56 silent. Cold-start log KOEO → crank → 83 °C,
+  three blips (max 4074 rpm). Step 8 measured: 0.96 Hz `--all`, 1.56 Hz core
+  — below the 2.5 Hz target, wire-bound. Continuous `e36 log` killed the FTDI
+  (once until a physical replug); burst logging worked. Several profile
+  entries shown wrong (ignition_advance frozen, O2/LTFT/load scalings).
+  Full write-up: research/session3-coldstart.md; goldens in tests/fixtures/.
+
+## Next session
+
+Physical checks (owner, no laptop needed):
+
+- [ ] Bank 1 O2: inspect/reseat the B1 front sensor connector first (the
+      decat/exhaust work may have disturbed it). If that's fine, measure
+      heater resistance and the 12 V heater feed — DTC 25 + a flat 4.89 V
+      signal suggest one break taking out signal and heater.
+- [ ] Battery: multimeter across the terminals, engine off and settled. The
+      DME read 11.62 V KOEO; if the meter agrees the battery is weak/discharged,
+      if it reads ~12.5 V the 0xFB45 scaling is off at the low end.
+
+On the car:
+
+- [ ] Use **burst logging only** (`e36 log partNN.csv --samples 40 --rate 1.5`
+      in a loop, reopening the port each burst) until `e36 log` reconnects on
+      its own. Never run a long continuous log on this cable. Try a different
+      USB port/cable if drops continue.
+- [ ] After the profile fixes in TODO.md land: re-log a warm idle + blips to
+      check the new ignition-angle candidate (0xE98D) and the O2/LTFT
+      reinterpretation.
+- [ ] Step 10 (`e36 panel` on the running engine) and step 11 (drive test,
+      LTFT/additive B2) are not covered by the session-3 captures.
 
 ## After any session
 
