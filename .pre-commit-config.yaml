@@ -12,11 +12,12 @@ repos:
       - id: check-merge-conflict
 
   - repo: https://github.com/astral-sh/ruff-pre-commit
-    rev: v0.9.6
+    rev: v0.17.3 # keep == RUFF_VERSION in .github/workflows/ci.yml
     hooks:
-      - id: ruff
+      - id: ruff-check
         args: ["--fix"]
       - id: ruff-format
+        types_or: [python, pyi, jupyter] # newer hook revs also format markdown; keep docs untouched
 
   - repo: local
     hooks:

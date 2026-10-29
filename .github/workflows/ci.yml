@@ -4,42 +4,62 @@ on:
   push:
     branches: [main]
   pull_request:
+  # release.yml calls this whole workflow as its gate, so a tag can only
+  # publish after the same lint + matrix + wheel smoke that guards main.
+  workflow_call:
+
+permissions:
+  contents: read
 
 jobs:
   lint:
     runs-on: ubuntu-latest
+    env:
+      RUFF_VERSION: "0.17.3" # keep == ruff-pre-commit rev (tests/test_release.py)
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uvx ruff check src tests
-      - run: uvx ruff format --check src tests
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: uvx "ruff@$RUFF_VERSION" check src tests
+      - run: uvx "ruff@$RUFF_VERSION" format --check src tests
 
   test:
     runs-on: ubuntu-latest
     strategy:
       matrix:
-        python-version: ["3.11", "3.12"]
+        python-version: ["3.11", "3.12", "3.13", "3.14"]
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
         with:
           python-version: ${{ matrix.python-version }}
-      - run: uv sync
+      - run: uv sync --locked
       - run: uv run pytest
 
+  # Builds the sdist + wheel exactly once. On a release, this `dist` artifact is
+  # what release.yml publishes, so the smoke-tested wheel is the shipped wheel.
   build:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: astral-sh/setup-uv@v5
-      - run: uv build
-      - name: Smoke-test wheel outside the repo
+      - uses: actions/checkout@11d5960a326750d5838078e36cf38b85af677262 # v4.4.0
+        with:
+          persist-credentials: false
+      - uses: astral-sh/setup-uv@d4b2f3b6ecc6e67c4457f6d3e41ec42d3d0fcb86 # v5.4.2
+      - run: uv build # sdist first, then the wheel built from that sdist
+      - name: Smoke-test wheel in a fresh venv outside the repo
         run: |
-          cd /tmp
+          cd "$RUNNER_TEMP"
           uv venv smoke && . smoke/bin/activate
           uv pip install "$GITHUB_WORKSPACE"/dist/*.whl
+          python -c "import e36cli, importlib.metadata as m; assert e36cli.__version__ == m.version('e36cli'), e36cli.__version__"
           e36 --sim ident
-      - uses: actions/upload-artifact@v4
+          # replayed real faults → decoded via the DTC database packaged in the wheel
+          e36 --sim-fixture "$GITHUB_WORKSPACE"/car/captures/car-dtc.jsonl dtc read
+      - uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
         with:
-          name: wheel
-          path: dist/*.whl
+          name: dist
+          path: dist/
+          if-no-files-found: error
