@@ -13,7 +13,7 @@ import sys
 from rich.console import Console, Group, RenderableType
 from rich.text import Text
 
-from . import ds2, live, ms41
+from . import ds2, live, ms41, writes
 
 # Only bits whose meaning research/ms41-data.md §3.6.1 documents are decoded;
 # everything else renders as raw hex. "closed throttle" is the INVERSE of
@@ -91,22 +91,28 @@ def render_panel(
 
     parts.append(live.render_faults(store, dtc_interval))
 
+    parts += render_clear_status(store, controller, "keys: q quit · c clear faults")
+    return Group(*parts)
+
+
+def render_clear_status(
+    store: live.LiveStore, controller: PanelController, keys_hint: str
+) -> list[RenderableType]:
+    """Last clear outcome + the confirmation banner (or the key hint).
+
+    Shared by panel and dashboard so the write-path wording lives once.
+    """
+    parts: list[RenderableType] = []
     clear = store.clear_snapshot()
     if clear is not None:
         msg, ok = clear
         parts.append(Text(msg, style="green" if ok else "red"))
-
     if controller.state == "confirm":
-        parts.append(
-            Text(
-                "CLEAR DME FAULT MEMORY? This is a write to the ECU. press y to "
-                "confirm, any other key to cancel",
-                style="bold white on red",
-            )
-        )
+        banner = f"{writes.CLEAR_QUESTION} Press y to confirm, any other key to cancel."
+        parts.append(Text(banner.upper(), style="bold white on red"))
     else:
-        parts.append(Text("keys: q quit · c clear faults", style="dim"))
-    return Group(*parts)
+        parts.append(Text(keys_hint, style="dim"))
+    return parts
 
 
 def run_panel(

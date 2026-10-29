@@ -23,10 +23,9 @@ from rich.live import Live
 from rich.table import Table
 from rich.text import Text
 
-from . import ds2, ms41, policy
+from . import ds2, ms41, policy, writes
 from . import dtc as dtcmod
 from .errors import E36Error
-from .transport import TransportError
 
 # Profile params are scattered across ~9 KB of RAM; bridging gaps up to this
 # many bytes costs less wire time than extra request/response round trips
@@ -267,13 +266,13 @@ class Poller(threading.Thread):
         self._clear_requested.set()
 
     def _do_clear(self) -> None:
-        try:
-            self.client.query(ds2.ADDR["DME"], ms41.CMD_DTC_CLEAR, timing=ds2.CLEAR)
-        except (ds2.DS2Error, TransportError) as exc:
-            self.store.set_clear_result(f"clear failed: {exc}", ok=False)
-        else:
-            self.store.set_clear_result("fault memory cleared", ok=True)
-        self._poll_faults()  # re-read immediately so the panel shows the result
+        result = writes.clear_faults(self.client)  # sends once, then re-reads
+        self.store.set_clear_result(
+            result.message, ok=result.outcome is writes.ClearOutcome.CLEARED
+        )
+        if result.faults is not None:
+            self.store.update_faults(result.faults, result.hours_now)
+        self._next_dtc = self.clock() + self.dtc_interval
 
     def _die(self, msg: str) -> None:
         self.fatal = msg

@@ -17,7 +17,7 @@ from rich.console import Console
 from rich.table import Table
 
 from . import dashboard as dashmod
-from . import datalog, ds2, live, ms41, policy
+from . import datalog, ds2, live, ms41, policy, writes
 from . import dtc as dtcmod
 from . import panel as panelmod
 from .capture import (
@@ -329,12 +329,16 @@ def dtc_clear(
 ) -> None:
     """Clear fault memory (WRITE operation)."""
     cfg: Config = ctx.obj
-    if not yes and not typer.confirm("Clear the DME fault memory?"):
+    if not yes and not typer.confirm(writes.CLEAR_QUESTION):
         console.print("Aborted.")
         raise typer.Exit(code=1)
     with make_client(cfg) as client:
-        client.query(ds2.ADDR["DME"], ms41.CMD_DTC_CLEAR, timing=ds2.CLEAR)
+        result = writes.clear_faults(client)
+    if result.outcome is not writes.ClearOutcome.CLEARED:
+        raise fail(result.message)
     console.print("[green]Fault memory cleared.[/green]")
+    if result.faults:
+        console.print(f"[yellow]{len(result.faults)} fault(s) re-stored immediately.[/yellow]")
 
 
 @app.command("live")
@@ -738,34 +742,63 @@ def log_cmd(
         console.print(f"Survived {logger.reconnects} link drop(s) (gap rows mark each one)")
 
 
+def _raw_request(data: bytes) -> tuple[int, bytes]:
+    """Bytes typed at `e36 raw` -> (addr, payload).
+
+    A complete frame when its length byte matches the byte count — and then
+    its checksum must match too: a typo is refused, never reinterpreted as a
+    different command. Otherwise `ADDR PAYLOAD...`, framed for you.
+    """
+    if len(data) >= 3 and data[1] == len(data):
+        expected = ds2.xor_checksum(data[:-1])
+        if data[-1] != expected:
+            raise fail(
+                f"checksum mismatch: frame ends {data[-1]:02X}, expected {expected:02X} "
+                "(or leave the checksum off and it is computed for you)"
+            )
+        return data[0], bytes(data[2:-1])
+    return data[0], bytes(data[1:])
+
+
 @app.command()
 @user_errors
 def raw(
     ctx: typer.Context,
     hexbytes: list[str] = typer.Argument(..., help="Frame or addr+payload, hex bytes."),
+    yes: bool = typer.Option(False, "--yes", help="Send a DME write without asking."),
 ) -> None:
     """Send an arbitrary DS2 frame; print the hex response (the probe tool).
 
     Accepts either a complete frame (len+checksum validated) or bare
-    `ADDR PAYLOAD...` — the frame is then built for you.
+    `ADDR PAYLOAD...` — the frame is then built for you. Idents and known DME
+    reads go out freely; anything else to the DME is a write (confirmation,
+    sent once, never retried); non-DME modules are ident-only.
     """
     cfg: Config = ctx.obj
-    try:
-        data = ds2.parse_hex(" ".join(hexbytes))
-    except ds2.DS2Error as exc:
-        raise fail(str(exc)) from None
+    data = ds2.parse_hex(" ".join(hexbytes))
     if len(data) < 1:
         raise fail("need at least an address byte")
-    try:
-        frame = ds2.parse_frame(data)
-        addr, payload = frame.addr, frame.payload
-    except ds2.DS2Error:
-        addr, payload = data[0], bytes(data[1:])
-    request = ds2.build_frame(addr, payload)
-    console.print(f"TX  {ds2.hexstr(request)}")
+    addr, payload = _raw_request(data)
+    kind = writes.classify_raw(addr, payload)
+    if kind is writes.RawKind.REFUSED:
+        raise fail(
+            f"refusing {ds2.hexstr(payload) or '(empty)'} to 0x{addr:02X}: non-DME modules "
+            "are ident-only (SPEC invariant 2)"
+        )
+    timing = ds2.SLOW
+    if kind is writes.RawKind.DME_WRITE:
+        question = (
+            f"{ds2.hexstr(payload) or '(empty payload)'} is not a known DME read and may "
+            "change ECU state. Send it once?"
+        )
+        if not yes and not typer.confirm(question):
+            console.print("Aborted.")
+            raise typer.Exit(code=1)
+        timing = writes.WRITE_TIMING
+    console.print(f"TX  {ds2.hexstr(ds2.build_frame(addr, payload))}")
     try:
         with make_client(cfg) as client:
-            resp = client.query(addr, payload, timing=ds2.SLOW)
+            resp = client.query(addr, payload, timing=timing)
     except ds2.NakResponse as exc:
         console.print(f"RX  status 0x{exc.status:02X} ({exc.meaning})")
         raise typer.Exit(code=1) from None

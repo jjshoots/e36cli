@@ -9,6 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from e36cli import ds2, live, ms41
+from e36cli.capture import CaptureReader
 from e36cli.cli import CAPTURE_DIR_ENV, app
 
 runner = CliRunner()
@@ -247,16 +248,31 @@ def test_timing_debug_reports_rate_to_stderr():
 # --- write guard -------------------------------------------------------------
 
 
-def test_dtc_clear_requires_confirmation():
+def tx_frames(capture_dir) -> list[bytes]:
+    """Every frame any command in this test put on the (sim) wire."""
+    return [
+        e.data
+        for path in sorted(capture_dir.glob("*.jsonl"))
+        for e in CaptureReader(path).events
+        if e.dir == "tx"
+    ]
+
+
+CLEAR_FRAME = ds2.build_frame(0x12, ms41.CMD_DTC_CLEAR)
+
+
+def test_dtc_clear_requires_confirmation(capture_dir):
     result = invoke("--sim", "dtc", "clear", input="n\n")
     assert result.exit_code == 1
     assert "Aborted" in result.output
+    assert CLEAR_FRAME not in tx_frames(capture_dir)  # nothing reached the wire
 
 
-def test_dtc_clear_with_yes():
+def test_dtc_clear_with_yes(capture_dir):
     result = invoke("--sim", "dtc", "clear", "--yes")
     assert result.exit_code == 0, result.output
     assert "cleared" in result.output.lower()
+    assert tx_frames(capture_dir).count(CLEAR_FRAME) == 1  # sent once, then re-read
 
 
 def test_dtc_clear_interactive_confirm():
@@ -308,6 +324,34 @@ def test_raw_accepts_bare_addr_payload():
 def test_raw_rejects_bad_hex():
     result = invoke("--sim", "raw", "zz")
     assert result.exit_code == 1
+
+
+def test_raw_dme_write_needs_confirmation(capture_dir):
+    result = invoke("--sim", "raw", "12", "05", input="n\n")
+    assert result.exit_code == 1
+    assert "Aborted" in result.output
+    assert CLEAR_FRAME not in tx_frames(capture_dir)
+
+
+def test_raw_dme_write_with_yes_is_sent_exactly_once(capture_dir):
+    result = invoke("--sim", "raw", "12", "05", "--yes")
+    assert result.exit_code == 0, result.output
+    assert tx_frames(capture_dir) == [CLEAR_FRAME]
+
+
+def test_raw_non_dme_non_ident_is_refused_even_with_yes(capture_dir):
+    # IKE 0x80: its command space holds an odometer reset (SPEC invariant 2)
+    result = invoke("--sim", "raw", "80", "04", "01", "--yes")
+    assert result.exit_code == 1
+    assert "ident-only" in result.output
+    assert tx_frames(capture_dir) == []
+
+
+def test_raw_full_frame_with_bad_checksum_is_refused_not_reinterpreted(capture_dir):
+    result = invoke("--sim", "raw", "12", "04", "00", "17")  # ident frame, checksum typo
+    assert result.exit_code == 1
+    assert "expected 16" in result.output
+    assert tx_frames(capture_dir) == []
 
 
 def test_captures_lists_and_shows_sessions(capture_dir):

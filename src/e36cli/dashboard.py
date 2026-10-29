@@ -21,7 +21,7 @@ from rich.table import Table
 from rich.text import Text
 
 from . import ds2, live, ms41
-from .panel import PanelController
+from .panel import PanelController, render_clear_status
 
 SPARK_GLYPHS = "▁▂▃▄▅▆▇█"
 
@@ -217,22 +217,9 @@ def render_screen(
     parts.append(render_grid(profile, store, names, controller.window, term_width))
     if dtc_interval > 0:
         parts.append(live.render_faults(store, dtc_interval))
-    clear = store.clear_snapshot()
-    if clear is not None:
-        msg, ok = clear
-        parts.append(Text(msg, style="green" if ok else "red"))
-    if controller.state == "confirm":
-        parts.append(
-            Text(
-                "CLEAR DME FAULT MEMORY? This is a write to the ECU. press y to "
-                "confirm, any other key to cancel",
-                style="bold white on red",
-            )
-        )
-    else:
-        parts.append(
-            Text("keys: q quit · c clear faults · p pause · +/- history window", style="dim")
-        )
+    parts += render_clear_status(
+        store, controller, "keys: q quit · c clear faults · p pause · +/- history window"
+    )
     return Group(*parts)
 
 

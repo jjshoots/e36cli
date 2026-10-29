@@ -7,7 +7,7 @@ import time
 
 from rich.console import Console
 
-from e36cli import ds2, live, ms41
+from e36cli import ds2, live, ms41, writes
 from e36cli.panel import PanelController, decode_state_bits, render_panel
 from e36cli.sim import SimDtc, SimTransport, SimulatedDME
 
@@ -152,9 +152,9 @@ def test_render_panel_confirm_prompt_and_clear_result():
     controller = PanelController(StubPoller())
     controller.handle_key("c")
     text = render_to_text(render_panel(profile, None, store, controller, 0.0))
-    assert "CLEAR DME FAULT MEMORY?" in text
+    assert writes.CLEAR_QUESTION.upper() in text
     store.set_clear_result("fault memory cleared", ok=True)
     controller.handle_key("x")  # cancel
     text = render_to_text(render_panel(profile, None, store, controller, 0.0))
     assert "fault memory cleared" in text
-    assert "CLEAR DME FAULT MEMORY?" not in text
+    assert writes.CLEAR_QUESTION.upper() not in text

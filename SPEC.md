@@ -16,8 +16,10 @@ spec in the same change.
    `CapturingTransport`. A capture write failure is fatal on every command,
    never a link error. Captures are the seed corpus for the simulator.
 2. **Reads are free, writes are guarded.** Commands that modify ECU state
-   (`dtc clear`, the panel's `c` key, future activations/adaptation resets)
-   require `--yes` or an interactive confirmation. Component activation must
+   (`dtc clear`, the panel's `c` key, `raw` with a non-read DME payload,
+   future activations/adaptation resets) require `--yes` or an interactive
+   confirmation, and a write is sent once, never retried (`writes.py`: a
+   timeout after TX reports "state unknown" and re-reads). Component activation must
    refuse if engine RPM > 0. Non-DME modules are strictly read-only (ident
    probes only) — never clear/write to IKE/ABS/EWS; the cluster command space
    contains an odometer reset (research/cluster-and-service-reset.md §1c).
@@ -92,7 +94,7 @@ core = true               # optional: dashboard-core subset (live/log default)
 | `e36 live --once` / `--json` | Single snapshot, human or JSON; includes faults (`--no-dtc` skips; JSON gets a `faults` array, or `faults_error` on a failed read) | no |
 | `e36 dashboard` | Full-screen tile grid with per-param history sparklines (same selection/DTC flags; `--history N` ring-buffer size; keys: `q` quit, `c` clear faults behind the same in-TUI `y` confirmation as panel, `p` pause rendering, `+`/`-` history window) | **c key** |
 | `e36 log OUT.csv` | Stream samples to CSV/JSONL until Ctrl-C (same selection flags; unverified params marked in headers/fields). Rows flushed as written. Resilient by default: `--burst N` closes/reopens the port every N samples (default 40, 0 = never); on a link error it waits for the device to return and resumes into the same file with a gap marker (`--no-reconnect` = fail fast) | no |
-| `e36 raw HEX...` | Send arbitrary frame, print hex response (the probe tool) | caution |
+| `e36 raw HEX...` | Send a frame (or `ADDR PAYLOAD...`), print hex response — the probe tool. A full frame's checksum must match (never reinterpreted). Idents and known DME reads (00/04/06/14) go out freely; any other DME payload is a write: `--yes` or confirmation, sent once, never retried; non-ident to non-DME modules is refused | **guarded** |
 | `e36 captures` | List/show capture sessions | no |
 
 Global options: `--port PATH` (default `/dev/ttyUSB0`), `--sim` (simulated
