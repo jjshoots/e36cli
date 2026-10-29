@@ -455,6 +455,9 @@ def panel_cmd(
     ctx: typer.Context,
     rate: float = typer.Option(10.0, "--rate", help="Max poll rate (Hz)."),
     dtc_interval: float = typer.Option(10.0, "--dtc-interval", help="Seconds between fault polls."),
+    frames: int | None = typer.Option(
+        None, "--frames", hidden=True, help="Render N frames then exit (testing/CI)."
+    ),
 ) -> None:
     """Everything-dashboard: ident header, all params, state bits, faults.
 
@@ -480,6 +483,7 @@ def panel_cmd(
                 rate=rate,
                 dtc_interval=dtc_interval,
                 stats=stats,
+                frames=frames,
             )
     finally:
         if stats is not None:

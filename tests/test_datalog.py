@@ -529,3 +529,20 @@ def test_latency_problem_resolves_symlinked_port(tmp_path, monkeypatch):
     monkeypatch.setattr(datalog, "set_ftdi_latency", fake_set)
     assert _REAL_LATENCY_PROBLEM(str(alias)) is None
     assert seen == [str(real)]
+
+
+def test_csv_and_jsonl_carry_identical_values():
+    # F-15: CSV used .4g — 65535-count integrators became 6.554e+04
+    spec = next(p for p in ms41.load_profiles()["ms41.1"].params if p.name == "rpm")
+    values = {
+        "rpm": ms41.Value(
+            name="rpm", label="RPM", raw=65535, value=65535.0, unit="rpm", verified=True
+        )
+    }
+    as_csv, as_jsonl = io.StringIO(), io.StringIO()
+    datalog.SampleWriter(as_csv, [spec], as_csv=True).sample(1.0, values)
+    datalog.SampleWriter(as_jsonl, [spec], as_csv=False).sample(1.0, values)
+    csv_value = float(as_csv.getvalue().splitlines()[1].split(",")[1])
+    jsonl_value = json.loads(as_jsonl.getvalue())["params"]["rpm"]["value"]
+    assert csv_value == jsonl_value == 65535.0
+    assert "e+" not in as_csv.getvalue()

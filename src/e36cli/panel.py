@@ -123,8 +123,12 @@ def run_panel(
     rate: float = 10.0,
     dtc_interval: float = 10.0,
     stats: live.TimingStats | None = None,
+    frames: int | None = None,
 ) -> None:
-    """Interactive panel until q/Ctrl-C. Raises live.LiveFatal if polling dies."""
+    """Interactive panel until q/Ctrl-C (or `frames` rendered frames: CI/testing).
+
+    Raises live.LiveFatal if polling dies.
+    """
     store = live.LiveStore()
     poller = live.Poller(
         client, profile, store, rate=rate, stats=stats, names=None, dtc_interval=dtc_interval
@@ -135,5 +139,6 @@ def run_panel(
         lambda: render_panel(profile, ident, store, controller, dtc_interval),
         console,
         controller=controller,
-        interactive=sys.stdin.isatty(),
+        interactive=frames is None and sys.stdin.isatty(),
+        frames=frames,
     )

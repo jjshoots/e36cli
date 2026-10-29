@@ -60,8 +60,11 @@ class SampleWriter:
 
     def sample(self, t: float, values: dict[str, ms41.Value]) -> None:
         if self._csv is not None:
+            # json.dumps = shortest round-tripping repr: the CSV carries exactly
+            # the number the JSONL would (no rounding of 16-bit integrators).
             self._csv.writerow(
-                [f"{t:.3f}"] + [f"{values[n].value:.4g}" if n in values else "" for n in self.names]
+                [f"{t:.3f}"]
+                + [json.dumps(values[n].value) if n in values else "" for n in self.names]
             )
         else:
             params = {n: {"value": v.value, "verified": v.verified} for n, v in values.items()}

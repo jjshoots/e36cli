@@ -64,7 +64,7 @@ def test_scan_shows_ident_bytes_and_ads_note():
     result = invoke("--sim", "scan")
     assert result.exit_code == 0, result.output
     # DME answers: raw ident bytes shown (sim ident starts with ASCII "1437806")
-    assert "31 34 33 37" in result.output.lower() or "31 34 33 37".upper() in result.output
+    assert "31 34 33 37" in result.output
     # IKE/ABS stay silent on a KKL cable: neutral ADS note, not just "silent"
     # (EWS answers ident on KKL: car/captures/car-koeo-scan.jsonl)
     assert result.output.count("may require ADS") == 2
@@ -114,8 +114,15 @@ def test_sia_needs_no_port(tmp_path):
 def test_panel_help_documents_keys_and_guarded_write():
     result = invoke("panel", "--help")
     assert result.exit_code == 0
-    assert "q quit" in result.output or "q" in result.output
-    assert "clear" in result.output.lower()
+    assert "q quit" in result.output
+    assert "confirmation" in result.output and "write to the ECU" in result.output
+
+
+def test_panel_runs_under_sim(monkeypatch):
+    monkeypatch.setenv("E36CLI_SIM_DTCS", "100")
+    result = invoke("--sim", "panel", "--frames", "4", "--dtc-interval", "0.01")
+    assert result.exit_code == 0, result.output
+    assert "state:" in result.output and "keys: q quit" in result.output
 
 
 def test_dtc_read_empty():
@@ -135,8 +142,8 @@ def test_dtc_read_seeded_codes(monkeypatch):
 def test_live_once_renders_params_with_unverified_marker():
     result = invoke("--sim", "live", "--once")
     assert result.exit_code == 0, result.output
-    assert "Engine RPM" in result.output
-    assert "?" in result.output  # nothing verified pre-garage
+    rpm_row = next(ln for ln in result.output.splitlines() if "Engine RPM" in ln)
+    assert "?" in rpm_row  # ms41.1 (the sim's profile) is unverified on any car
     assert "not verified" in result.output
 
 
@@ -516,3 +523,33 @@ def test_scan_dead_port_fails_after_showing_partial_table(monkeypatch):
     assert "device disconnected" in result.output
     assert "DS2 bus scan" in result.output  # the partial table was printed
     assert "module(s) responding" not in result.output
+
+
+def test_sia_timer_counts_down_with_an_injected_clock(monkeypatch):
+    clock = [0.0]
+    monkeypatch.setattr("e36cli.cli.time.monotonic", lambda: clock[0])
+    monkeypatch.setattr("e36cli.cli.time.sleep", lambda s: clock.__setitem__(0, clock[0] + s))
+    result = invoke("sia", "oil", "--timer", input="y\n" * 6)
+    assert result.exit_code == 0, result.output
+    assert "Remove the jumper NOW" in result.output
+    assert clock[0] >= 4.0  # the oil hold time actually elapsed (on the fake clock)
+
+
+def test_command_surface_matches_spec():
+    """SPEC's command table is closed: every row exists, nothing extra does."""
+    import re
+    from pathlib import Path
+
+    import typer
+
+    spec = (Path(__file__).parents[1] / "SPEC.md").read_text()
+    documented = {
+        " ".join(w for w in m.split() if re.fullmatch(r"[a-z]+", w))
+        for m in re.findall(r"^\| `e36 ([^`]+)`", spec, re.M)
+    }
+    group = typer.main.get_group(app)
+    registered = set()
+    for name, cmd in group.commands.items():
+        sub = getattr(cmd, "commands", None)
+        registered |= {f"{name} {s}" for s in sub} if sub else {name}
+    assert registered == documented
