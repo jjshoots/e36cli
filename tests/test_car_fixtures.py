@@ -241,3 +241,23 @@ def test_car_captures_have_redacted_serial():
             idents += 1
             start = rx.find(b"\x12\x2e\xa0", start + 1)
     assert idents >= 6
+
+
+# --- session-4 evidence: bank 1 O2 repaired (warm idle, v0.3.0 column names)
+
+
+def b1fixed_rows() -> list[dict[str, str]]:
+    with (FIXTURES / "car-b1fixed.csv").open() as fh:
+        return [r for r in csv.DictReader(fh) if r["rpm"]]
+
+
+def test_b1fixed_bank1_closed_loop():
+    rows = b1fixed_rows()
+    assert len(rows) == 45
+    # sessions 1-3: O2 B1 flat ~4.89, STFT B1 exactly 0, lambda bits 2
+    o2_b1 = [float(r["o2_front_b1?"]) for r in rows]
+    assert min(o2_b1) < 1.0 and max(o2_b1) > 4.5 and len(set(o2_b1)) > 20
+    stft_b1 = [float(r["stft_b1?"]) for r in rows]
+    assert all(v > 0 for v in stft_b1) and len(set(stft_b1)) > 10
+    assert {r["lambda_bits_b1?"] for r in rows} == {"1"}
+    assert {r["lambda_bits_b2?"] for r in rows} == {"1"}

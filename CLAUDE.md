@@ -141,3 +141,10 @@ M52B28 ("2.8") MS41.x DME, possibly tuned. Cable: VAG KKL 409.1, FTDI FT232RL,
   `ltft_*` are lambda-controller integrators (true B2 LTFT ≈ +12 %, supports
   x/4096); `load` ~90× too small; `operating_state_bits` dead. Bank 1: O2 flat
   + heater DTC 25 ⇒ check B1 connector. Follow-ups in TODO.md.
+- 2026-11-18: **garage session 4 — bank 1 O2 fixed.** Owner repaired B1 and
+  cleared codes via the dashboard; DTC 25 did not re-store (217/52 did, as
+  predicted). Warm-idle golden `car/captures/car-b1fixed.csv` (v0.3.0 column
+  names): O2 B1 switching, STFT B1 live (+1.7…+7.8 %), integrator/additive
+  B1 moving, `lambda_bits_b1` 2 → 1 (2 = lambda control off, 1 = closed
+  loop). The open-loop fingerprint in car/research/1429373-probe.md is now
+  historical. Battery multimeter check still pending.

@@ -32,14 +32,24 @@ write-ups in `car/research/`. The car itself: `car/README.md`.
   entries shown wrong (ignition_advance frozen, O2/LTFT/load scalings).
   Full write-up: car/research/session3-coldstart.md; goldens in car/captures/.
 
+- **Session 4 — 2026-11-18, warm idle 63–66 °C: bank 1 O2 FIXED.**
+  Owner repaired bank 1 and cleared the fault memory from the dashboard
+  before this check. `dtc read` → only 217 + 52, both freq 1 / age 0.0 h
+  (re-stored at once, as predicted); **DTC 25 did not return**. Ident
+  unchanged. 45-sample `log --all` → `car/captures/car-b1fixed.csv`
+  (recorded with the installed v0.3.0 tool, so columns carry the
+  pre-correction names/scalings — same as car-coldstart.csv): O2 B1 swings
+  0.51–4.80 (38 distinct, like B2; was flat 4.89 in all 859 earlier samples),
+  STFT B1 +1.7…+7.8 % (was exactly 0), integrator 0xED6E sawtooth 13.2–19.8,
+  add_b1 0.16–0.23 ms (was 0), `lambda_bits_b1` = 1 (was 2 — so 2 ⇒ lambda
+  control off, 1 ⇒ closed loop). Both banks closed loop, mean STFT +5.8 % B1
+  / +4.2 % B2. Evidence test: `test_b1fixed_bank1_closed_loop`.
+
 ## Next session
 
 Physical checks (owner, no laptop needed):
 
-- [ ] Bank 1 O2: inspect/reseat the B1 front sensor connector first (the
-      decat/exhaust work may have disturbed it). If that's fine, measure
-      heater resistance and the 12 V heater feed — DTC 25 + a flat 4.89 V
-      signal suggest one break taking out signal and heater.
+- [x] Bank 1 O2: FIXED — see session 4.
 - [ ] Battery: multimeter across the terminals, engine off and settled. The
       DME read 11.62 V KOEO; if the meter agrees the battery is weak/discharged,
       if it reads ~12.5 V the 0xFB45 scaling is off at the low end.
